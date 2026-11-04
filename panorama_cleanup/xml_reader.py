@@ -148,6 +148,8 @@ def read_device_groups(tree: etree._ElementTree) -> tuple:
     for name in sorted(set(readonly) - set(groups)):
         warnings.append(f"Device Group {name}: presente em readonly mas ausente na configuração")
 
+    warnings.extend(_shared_firewall_warnings(device))
+
     for dg in groups.values():
         if dg.parent not in (SHARED, UNKNOWN) and dg.parent not in groups:
             warnings.append(f"Device Group {dg.name}: pai {dg.parent!r} inexistente")
@@ -175,3 +177,36 @@ def read_device_groups(tree: etree._ElementTree) -> tuple:
         dg.depth = len(dg.path) - 1
 
     return list(groups.values()), warnings
+
+
+def _shared_firewall_warnings(device) -> list:
+    """Firewall (serial) associado a mais de um Device Group, com o vsys de cada associação.
+
+    Num firewall multi-vsys, cada vsys pertence a um DG. A ferramenta modela herança e valor
+    efetivo por DG (portanto por vsys), mas esse cenário não foi validado em equipamento
+    real: o aviso pede testes de política por vsys na homologação. Mesmo vsys (ou vsys não
+    declarado) em mais de um DG é inconsistente e também é apontado.
+    """
+    owners = {}
+    for dg in device.findall("device-group/entry"):
+        for fw in dg.findall("devices/entry"):
+            vsys = tuple(v.get("name") for v in fw.findall("vsys/entry"))
+            owners.setdefault(fw.get("name"), []).append((dg.get("name"), vsys))
+    out = []
+    for serial, items in sorted(owners.items()):
+        if len(items) < 2:
+            continue
+        desc = ", ".join(f"{dg} ({'/'.join(v) if v else 'vsys não declarado'})" for dg, v in items)
+        seen, repeated = set(), set()
+        for _, vsys in items:
+            for v in vsys or ("<não declarado>",):
+                (repeated if v in seen else seen).add(v)
+        if repeated:
+            out.append(f"Firewall {serial} em {len(items)} Device Groups com vsys repetido "
+                       f"({', '.join(sorted(repeated))}): {desc}. Associação inconsistente; "
+                       "confirme no Panorama antes de prosseguir")
+        else:
+            out.append(f"Firewall {serial} em {len(items)} Device Groups (multi-vsys): {desc}. "
+                       "A ferramenta modela por DG; cenário multi-vsys não validado em "
+                       "equipamento: faça os testes de política por vsys na homologação")
+    return out

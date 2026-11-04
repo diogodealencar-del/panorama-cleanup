@@ -236,4 +236,5 @@ Situação frente ao critério da seção 18 do CLAUDE.md:
 | Uso de objetos fora do Panorama (configuração local, scripts) | Conferência das exclusões; a fase 4 pode ir para outra janela |
 | Premissa (grupos de Shared resolvem para o objeto do DG no firewall) | Testes de política antes e depois em cada firewall (B4.3), começando pelo piloto |
 | `readonly` (IDs internos) | Alterações via API: o Panorama mantém os IDs; `validate --exported` ignora apenas essa seção |
+| Firewalls multi-vsys (aviso do inventário: serial em mais de um DG) | Cenário não validado em equipamento: testes de política antes e depois **por vsys** em cada firewall afetado (A8, B0.3, B4.3) |
 | Regras sem teste automático (<n> das <n> com referência renomeada) | Revisão manual no Preview Changes (B3.1) e monitoração de logs |

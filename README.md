@@ -40,6 +40,19 @@ Depois disso, em qualquer pasta, basta pedir ao Claude Code algo como "analise o
 
 Desenvolvimento: `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' && .venv/bin/pytest`.
 
+## Skill para o claude.ai (chat)
+
+```sh
+.venv/bin/python scripts/build_skill.py     # gera dist/panorama-cleanup-skill-<versão>.zip
+```
+
+No claude.ai: **Settings → Capabilities**, ative a execução de código e, em **Skills**, envie o zip. Depois, numa conversa, anexe o export XML do Panorama e peça, por exemplo, "analise este backup do Panorama". A skill pergunta sobre confidencialidade antes de abrir o arquivo e conduz as etapas com aprovação entre elas. Relatórios, XML final e comandos ficam disponíveis para download.
+
+- O backup é enviado ao claude.ai: use somente quando o contrato do cliente permitir. Caso contrário, use o plugin do Claude Code, em que tudo roda localmente.
+- O zip leva o código, a configuração, o modelo da Etapa 9, os guias de CLI presentes em `docs/referencias/` e as bibliotecas Python puras (`defusedxml`, `openpyxl`, `et_xmlfile`). O `lxml` precisa existir no ambiente; a skill confere com `run.py --check`.
+- A mesma pasta (zip extraído) serve para outros agentes que leem `SKILL.md`, desde que executem Python.
+- As instruções vêm de `skill/` (fonte única). O build também regenera `claude-plugin/skills/panorama-cleanup/SKILL.md`; não edite esse arquivo diretamente. `python scripts/build_skill.py --check` (e o teste `tests/test_build_skill.py`) acusam divergência.
+
 ## Uso
 
 Uma pasta de trabalho por cliente/Panorama, fora do clone. A ferramenta cria `input/`, `output/`, `cli/`, `rollback/` e `logs/` dentro dela:

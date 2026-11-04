@@ -118,3 +118,46 @@ def test_parse_does_not_modify_file():
     before = path.read_bytes()
     parse_backup(path)
     assert path.read_bytes() == before
+
+
+def _dg(name, devices):
+    fws = []
+    for serial, vsys in devices:
+        inner = "".join('<entry name="%s"/>' % v for v in vsys)
+        fws.append('<entry name="%s">%s</entry>' % (serial, "<vsys>%s</vsys>" % inner if vsys else ""))
+    return '<entry name="%s"><devices>%s</devices></entry>' % (name, "".join(fws))
+
+
+def _ro(*names):
+    return "".join(f'<entry name="{n}"><id>{i}</id></entry>' for i, n in enumerate(names, 1))
+
+
+def test_multi_vsys_firewall_in_several_dgs_is_warned(tmp_path):
+    xml = config(_dg("DG-A", [("0001", ["vsys1"]), ("0002", ["vsys1"])])
+                 + _dg("DG-B", [("0001", ["vsys2"])]), _ro("DG-A", "DG-B"))
+    groups, warnings = read_device_groups(parse_backup(write(tmp_path, xml)))
+    assert len(warnings) == 1
+    assert "Firewall 0001 em 2 Device Groups (multi-vsys): DG-A (vsys1), DG-B (vsys2)" in warnings[0]
+    assert "por vsys" in warnings[0]
+    assert {g.name: g.devices for g in groups} == {"DG-A": ("0001", "0002"), "DG-B": ("0001",)}
+
+
+def test_same_vsys_in_two_dgs_is_inconsistent(tmp_path):
+    xml = config(_dg("DG-A", [("0001", ["vsys1"])]) + _dg("DG-B", [("0001", ["vsys1"])]),
+                 _ro("DG-A", "DG-B"))
+    _, warnings = read_device_groups(parse_backup(write(tmp_path, xml)))
+    assert len(warnings) == 1 and "vsys repetido (vsys1)" in warnings[0]
+    assert "inconsistente" in warnings[0]
+
+
+def test_undeclared_vsys_in_two_dgs_is_inconsistent(tmp_path):
+    xml = config(_dg("DG-A", [("0001", [])]) + _dg("DG-B", [("0001", [])]), _ro("DG-A", "DG-B"))
+    _, warnings = read_device_groups(parse_backup(write(tmp_path, xml)))
+    assert len(warnings) == 1 and "inconsistente" in warnings[0]
+
+
+def test_firewall_in_single_dg_has_no_warning(tmp_path):
+    xml = config(_dg("DG-A", [("0001", ["vsys1", "vsys2"])]) + _dg("DG-B", [("0002", [])]),
+                 _ro("DG-A", "DG-B"))
+    _, warnings = read_device_groups(parse_backup(write(tmp_path, xml)))
+    assert warnings == []

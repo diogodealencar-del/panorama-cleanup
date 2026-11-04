@@ -33,3 +33,6 @@ docs/referencias/*/*
 docs/etapas.md
 docs/etapa-09-procedimento-operacional.md
 docs/procedimento-uso-da-ferramenta.pdf
+
+# Skill gerada (scripts/build_skill.py)
+dist/

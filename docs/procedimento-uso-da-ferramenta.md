@@ -372,6 +372,7 @@ Ao terminar um backup, arquive os diretórios usados num local controlado e remo
 ## 10. Limitações conhecidas
 
 - **Versões testadas:** só PAN-OS 11.1 com Device Groups filhos diretos de Shared. Hierarquias aninhadas são tratadas e testadas com dados sintéticos, mas um backup real com hierarquia aninhada deve ser revisado com atenção redobrada.
+- **Firewalls multi-vsys:** a ferramenta modela herança e valor efetivo por Device Group. Em multi-vsys, cada vsys pertence a um DG, então o modelo vale por vsys, mas esse cenário não foi validado em equipamento real. O inventário avisa quando um serial aparece em mais de um DG, com o vsys de cada associação; nesse caso, faça os testes de política por vsys na homologação. Mesmo vsys em dois DGs é apontado como inconsistente.
 - **CLI do Panorama:** depende do guia trazer a hierarquia de Panorama da versão. No 11.1, o guia só traz a de firewall, por isso a implantação é pela XML API.
 - **Objetos de templates:** não são inventariados; templates entram só como fonte de referências.
 - **Uso fora do Panorama:** configuração local dos firewalls, scripts e integrações não são visíveis no backup. As exclusões precisam ser conferidas.
