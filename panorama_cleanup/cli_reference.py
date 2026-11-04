@@ -28,6 +28,7 @@ from dataclasses import dataclass
 FOOTER = re.compile(r"^PAN-OS CLI Quick Start Version|^Use the CLI$|^```|^CLI Changes in PAN-OS")
 CONTINUATION = re.compile(r"^[a-z0-9<\[]")
 LIST, VAR, KW = "list", "var", "kw"
+ALTERNATIVE_VARS = re.compile(r"^<[^<>|]+>(\|<[^<>|]+>)+$")
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,10 @@ def _patterns_from_lines(raw) -> dict:
         # Continuação: o PDF quebra linhas da hierarquia antes de "<", "[" ou de uma
         # palavra-chave (sempre minúscula); prosa começa com maiúscula.
         if current and text and (_unbalanced(current) or CONTINUATION.match(text)):
-            current = f"{current} {text}" if not current.endswith("-") else current + text
+            # Sem espaço quando o PDF quebrou uma palavra ("mlav-" + "action") ou uma lista
+            # de opções ("<color1|...|color5|" + "color6|...>"; "<value>|" + "<any>").
+            glue = current.endswith(("-", "|")) or text.startswith("|")
+            current = current + text if glue else f"{current} {text}"
             continue
         if current:
             lines.append(current)
@@ -115,7 +119,10 @@ def _pattern_tokens(line: str) -> list:
             tokens.append((LIST, None))
             i = j + 1
             continue
-        if w.startswith("<"):
+        if ALTERNATIVE_VARS.match(w):
+            # "<value>|<any>": um valor qualquer ou a palavra-chave any.
+            tokens.append((VAR, None))
+        elif w.startswith("<"):
             body = w.strip("<>")
             choices = None
             if "|" in body and not any(ch in body for ch in " ,."):

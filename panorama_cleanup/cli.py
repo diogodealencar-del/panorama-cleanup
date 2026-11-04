@@ -117,6 +117,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _existing_sha256(path) -> str:
+    """sha256 de um arquivo de um run anterior; ausência vira erro claro, sem traceback."""
+    try:
+        return sha256_file(path)
+    except OSError as exc:
+        raise AnalysisError(
+            f"Arquivo de um run anterior ausente ou ilegível: {path} ({exc.strerror}). "
+            "O run não pode ser usado: restaure o arquivo ou refaça a etapa que o gerou.")
+
+
 def _safe_console() -> None:
     """Console do Windows (cp1252/cp850) não quebra com caracteres fora da página de código."""
     for stream in (sys.stdout, sys.stderr):
@@ -249,7 +259,7 @@ def check_inventory_run(inventory_dir: Path, ctx, inv) -> str:
     if manifest["input"]["sha256"] != ctx.input_sha256:
         raise AnalysisError("O inventário informado foi gerado a partir de outro arquivo (sha256 diferente)")
     csv_path = manifest_path.parent / "inventory.csv"
-    if sha256_file(csv_path) != manifest["outputs"].get("inventory.csv"):
+    if _existing_sha256(csv_path) != manifest["outputs"].get("inventory.csv"):
         raise AnalysisError(f"{csv_path} foi alterado após a geração (sha256 diverge do manifest)")
     with open(csv_path, encoding="utf-8", newline="") as fh:
         previous = [(r["xpath"], r["value_sha256"]) for r in csv.DictReader(fh)]
@@ -306,7 +316,7 @@ def check_analysis_run(analysis_dir: Path, ctx, an) -> str:
     if manifest["input"]["sha256"] != ctx.input_sha256:
         raise AnalysisError("A análise informada foi gerada a partir de outro arquivo (sha256 diferente)")
     csv_path = manifest_path.parent / "object-classification.csv"
-    if sha256_file(csv_path) != manifest["outputs"].get("object-classification.csv"):
+    if _existing_sha256(csv_path) != manifest["outputs"].get("object-classification.csv"):
         raise AnalysisError(f"{csv_path} foi alterado após a geração (sha256 diverge do manifest)")
     keys = ("xpath", "classifications", "value_cluster", "value_differs_in")
     with open(csv_path, encoding="utf-8", newline="") as fh:
@@ -363,7 +373,7 @@ def load_approved_plan(plan_dir: Path, ctx, an) -> tuple:
     if manifest["input"]["sha256"] != ctx.input_sha256:
         raise AnalysisError("O plano informado foi gerado a partir de outro arquivo (sha256 diferente)")
     for name in ("plan.json", "reference-updates.csv", "renamed-objects.csv", "deleted-objects.csv"):
-        if sha256_file(manifest_path.parent / name) != manifest["outputs"].get(name):
+        if _existing_sha256(manifest_path.parent / name) != manifest["outputs"].get(name):
             raise AnalysisError(f"{name} do plano foi alterado após a geração")
     if manifest["summary"].get("verification_differences") != 0:
         raise AnalysisError("O plano informado não foi provado equivalente")
@@ -450,10 +460,10 @@ def load_convert_run(run_dir: Path, ctx, plan_run: str) -> tuple:
     if manifest["checks_passed"] != manifest["checks_total"]:
         raise AnalysisError("O run APPLY informado não passou em todas as verificações")
     xml = Path(manifest["output_xml"]["path"])
-    if sha256_file(xml) != manifest["output_xml"]["sha256"]:
+    if _existing_sha256(xml) != manifest["output_xml"]["sha256"]:
         raise AnalysisError(f"{xml} foi alterado após a conversão")
     refs = manifest_path.parent / "reference-updates.csv"
-    if sha256_file(refs) != manifest["outputs"].get("reference-updates.csv"):
+    if _existing_sha256(refs) != manifest["outputs"].get("reference-updates.csv"):
         raise AnalysisError(f"{refs} foi alterado após a conversão")
     with open(refs, encoding="utf-8", newline="") as fh:
         renames = {(r["source_xpath"], r["field"], r["old"]): r["new"]
@@ -555,10 +565,10 @@ def load_cleanup_run(run_dir: Path, ctx, plan_run: str, convert_run: str) -> tup
     if manifest["checks_passed"] != manifest["checks_total"]:
         raise AnalysisError("O run cleanup não passou em todas as verificações")
     xml = Path(manifest["output_xml"]["path"])
-    if sha256_file(xml) != manifest["output_xml"]["sha256"]:
+    if _existing_sha256(xml) != manifest["output_xml"]["sha256"]:
         raise AnalysisError(f"{xml} foi alterado após a Etapa 6")
     deleted = manifest_path.parent / "deleted-objects.csv"
-    if sha256_file(deleted) != manifest["outputs"].get("deleted-objects.csv"):
+    if _existing_sha256(deleted) != manifest["outputs"].get("deleted-objects.csv"):
         raise AnalysisError(f"{deleted} foi alterado após a Etapa 6")
     with open(deleted, encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
@@ -779,7 +789,7 @@ def run_validate(input_path, modified_path, plan_dir, convert_dir, cleanup_dir, 
         convert_run, _, _, rule_renames = load_convert_run(convert_dir, ctx, plan_run)
         cleanup_run, final_path, final_sha, deleted = load_cleanup_run(
             cleanup_dir, ctx, plan_run, convert_run)
-        modified_sha = sha256_file(modified_path)
+        modified_sha = _existing_sha256(modified_path)
         if not exported and modified_sha != final_sha:
             raise AnalysisError(f"{modified_path} não é o XML final do run {cleanup_run} "
                                 f"(sha256 {modified_sha} != {final_sha})")

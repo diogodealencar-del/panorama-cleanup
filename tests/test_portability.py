@@ -81,3 +81,13 @@ def test_command_writers_never_use_platform_newlines():
     assert ".write_text(" not in source
     for call in re.findall(r"open\([^)]*\"w\"[^)]*\)", source):
         assert "newline=" in call, call
+
+
+def test_missing_run_xml_is_a_clean_error(tmp_path, capsys):
+    work, w, backup, plan, convert, cleanup = _pipeline(tmp_path)
+    for xml in (work / "output" / "xml" / cleanup.name).glob("*.final.xml"):
+        xml.unlink()
+    code = _commands(work, w, backup, plan, convert, cleanup)
+    err = capsys.readouterr().err
+    assert code == cli.EXIT_ERROR
+    assert "ausente ou ilegível" in err and "Traceback" not in err

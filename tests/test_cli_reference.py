@@ -79,3 +79,52 @@ def test_real_guide_contains_forms_used_by_generator():
     ]
     assert [r.line for r in check_lines(lines, patterns) if not r.ok] == []
     assert not check_lines(["set shared address X ip-mask 1.1.1.1"], patterns)[0].ok
+
+
+# Quebras reais do PDF do PAN-OS CLI Quick Start (hierarquias 12.1/12.2): listas de
+# opções partidas no meio e alternativas "<value>|<any>". Antes da correção, a lista
+# virava palavras-chave extras e até "color7" era reprovado.
+WRAPPED = """set shared tag <name> color <color1|color2|color3|color4|color5|
+color6|color7|color8|color36|
+color37|color38>
+set shared profiles virus <name> decoder <name> action <default|
+allow|alert|drop|reset-client|reset-server|reset-both>
+set shared profiles virus <name> decoder <name> mlav-
+action <default|allow>
+set shared profiles vulnerability <name> rules <name> threat-name
+<value>|<any>
+set shared profiles vulnerability <name> rules <name> host <any|
+client|server>
+"""
+
+
+@pytest.fixture
+def wrapped(tmp_path):
+    path = tmp_path / "wrapped.md"
+    path.write_text(WRAPPED, encoding="utf-8")
+    return load_patterns(path)
+
+
+@pytest.mark.parametrize("line", [
+    "set shared tag AMCOM color color36",
+    "set shared tag T1 color color7",
+    "set shared tag T2 color color38",
+    "set shared profiles virus av decoder http2 action allow",
+    "set shared profiles virus av decoder imap mlav-action default",
+    "set shared profiles vulnerability ips rules r1 threat-name any",
+    "set shared profiles vulnerability ips rules r1 threat-name 30001",
+    "set shared profiles vulnerability ips rules r1 host client",
+])
+def test_wrapped_choice_lists_are_joined(wrapped, line):
+    assert check_lines([line], wrapped)[0].ok, line
+
+
+@pytest.mark.parametrize("line", [
+    "set shared tag BAD color color99",
+    "set shared tag BAD color color6|color7",
+    "set shared profiles virus av decoder http2 action block",
+    "set shared profiles vulnerability ips rules r1 host banana",
+    "set shared profiles vulnerability ips rules r1 threat-name any extra",
+])
+def test_wrapped_lists_still_reject_invalid_values(wrapped, line):
+    assert not check_lines([line], wrapped)[0].ok, line
