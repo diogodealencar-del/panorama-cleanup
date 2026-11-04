@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panorama-cleanup"
+version = "0.1.0"
+description = "Panorama Configuration Analyzer & Object Cleanup"
+requires-python = ">=3.9"
+dependencies = [
+    "lxml>=5.0",
+    "pandas>=2.0",
+    "openpyxl>=3.1",
+    "defusedxml>=0.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+panorama-cleanup = "panorama_cleanup.cli:main"
+
+# Instalar sempre em modo editável (pipx install -e <clone>): config/settings.json e
+# docs/referencias/ são lidos a partir da pasta do clone (config.PROJECT_ROOT).
+[tool.setuptools.packages.find]
+include = ["panorama_cleanup*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

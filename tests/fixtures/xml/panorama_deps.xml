@@ -1,0 +1,204 @@
+<?xml version="1.0"?>
+<config version="11.1.0" detail-version="11.1.10">
+  <devices>
+    <entry name="localhost.localdomain">
+      <template>
+        <entry name="T-RJ">
+          <config><devices><entry name="localhost.localdomain"><vsys><entry name="vsys1">
+            <zone><entry name="trust"/></zone>
+          </entry></vsys></entry></devices></config>
+        </entry>
+      </template>
+      <device-group>
+        <entry name="DG-RJ">
+          <tag><entry name="RJ-TAG"/></tag>
+          <address>
+            <entry name="SERVER"><ip-netmask>192.168.10.10</ip-netmask></entry>
+            <entry name="SHADOW"><ip-netmask>10.0.0.99</ip-netmask></entry>
+            <entry name="NAT-TARGET"><ip-netmask>10.3.3.3</ip-netmask></entry>
+            <entry name="DUPE"><ip-netmask>10.1.1.1</ip-netmask></entry>
+            <entry name="TAGDIFF"><ip-netmask>1.1.1.1</ip-netmask><tag><member>RJ-TAG</member></tag></entry>
+            <entry name="WEB-B"><ip-netmask>172.16.0.1/32</ip-netmask></entry>
+            <entry name="OVR-MEMBER"><ip-netmask>10.4.4.40</ip-netmask></entry>
+            <entry name="AMBIG"><ip-netmask>10.2.2.2</ip-netmask></entry>
+            <entry name="NEXTHOP-OBJ"><ip-netmask>10.30.0.1</ip-netmask></entry>
+          </address>
+          <address-group>
+            <entry name="MIXED"><static><member>NAT-TARGET</member></static></entry>
+            <entry name="AMBIG"><static><member>NAT-TARGET</member></static></entry>
+            <entry name="GRP-X"><static><member>SERVER</member></static></entry>
+          </address-group>
+          <post-rulebase>
+            <security><rules>
+              <entry name="RJ-R1">
+                <from><member>trust</member></from>
+                <to><member>untrust</member></to>
+                <source><member>GRP-SHARED-OVR</member><member>GRP-X</member></source>
+                <destination>
+                  <member>SHADOW</member><member>GRP-NESTED-OUTER</member><member>GRP-DYN</member>
+                  <member>EDL-1</member><member>AMBIG</member><member>BH-ONLY</member>
+                  <member>10.20.30.40</member>
+                </destination>
+                <application><member>ssl</member></application>
+                <service><member>application-default</member></service>
+                <category><member>CUSTOM-CAT</member></category>
+                <schedule>SCH-1</schedule>
+                <profile-setting><profiles>
+                  <spyware><member>AS-DIRECT</member></spyware>
+                  <url-filtering><member>URL-1</member></url-filtering>
+                </profiles></profile-setting>
+                <action>allow</action>
+              </entry>
+              <entry name="RJ-R2">
+                <source><member>any</member></source>
+                <destination><member>DUPE</member></destination>
+                <disabled>yes</disabled>
+              </entry>
+            </rules></security>
+            <nat><rules>
+              <entry name="RJ-NAT1">
+                <source><member>any</member></source>
+                <destination><member>any</member></destination>
+                <service>any</service>
+                <destination-translation><translated-address>NAT-TARGET</translated-address><translated-port>8080</translated-port></destination-translation>
+                <to-interface>ethernet1/1</to-interface>
+              </entry>
+            </rules></nat>
+            <pbf><rules>
+              <entry name="RJ-PBF1">
+                <source><member>any</member></source>
+                <destination><member>any</member></destination>
+                <service><member>SG-WEB</member></service>
+                <action><forward><egress-interface>ethernet1/2</egress-interface><nexthop><ip-address>NEXTHOP-OBJ</ip-address></nexthop></forward></action>
+              </entry>
+            </rules></pbf>
+          </post-rulebase>
+        </entry>
+        <entry name="DG-BH">
+          <address>
+            <entry name="SERVER"><ip-netmask>192.168.20.10</ip-netmask></entry>
+            <entry name="DUPE"><ip-netmask>10.1.1.1/32</ip-netmask></entry>
+            <entry name="TAGDIFF"><ip-netmask>1.1.1.1</ip-netmask></entry>
+            <entry name="BH-ONLY"><ip-netmask>10.10.10.10</ip-netmask></entry>
+            <entry name="BH-OBJ"><ip-netmask>10.11.11.11</ip-netmask></entry>
+          </address>
+          <address-group>
+            <entry name="GRP-X"><static><member>SERVER</member></static></entry>
+          </address-group>
+          <post-rulebase>
+            <security><rules>
+              <entry name="BH-R1">
+                <destination><member>PARENT-OBJ</member><member>FIL-ONLY</member><member>TAGDIFF</member></destination>
+              </entry>
+            </rules></security>
+          </post-rulebase>
+        </entry>
+        <entry name="DG-BH-FILIAL">
+          <address>
+            <entry name="FIL-ONLY"><ip-netmask>10.12.12.12</ip-netmask></entry>
+          </address>
+          <application-group>
+            <entry name="APPS-WEB"><members><member>web-browsing</member></members></entry>
+          </application-group>
+          <application-filter>
+            <entry name="FILTER-1"><risk><member>5</member></risk></entry>
+          </application-filter>
+          <post-rulebase>
+            <security><rules>
+              <entry name="FIL-R1"><application><member>FILTER-1</member></application></entry>
+            </rules></security>
+            <application-override><rules>
+              <entry name="FIL-AO">
+                <destination><member>BH-OBJ</member></destination>
+                <application>APPS-WEB</application>
+                <port>8080</port><protocol>tcp</protocol>
+              </entry>
+            </rules></application-override>
+          </post-rulebase>
+        </entry>
+      </device-group>
+    </entry>
+  </devices>
+  <readonly>
+    <devices>
+      <entry name="localhost.localdomain">
+        <device-group>
+          <entry name="DG-RJ"><id>11</id></entry>
+          <entry name="DG-BH"><id>12</id></entry>
+          <entry name="DG-BH-FILIAL"><id>13</id><parent-dg>DG-BH</parent-dg></entry>
+        </device-group>
+      </entry>
+    </devices>
+  </readonly>
+  <shared>
+    <log-settings><profiles>
+      <entry name="LFP-1"><match-list><entry name="Traffic"><log-type>traffic</log-type></entry></match-list></entry>
+    </profiles></log-settings>
+    <tag>
+      <entry name="PROD"/>
+      <entry name="UNUSED-TAG"/>
+      <entry name="ON-ORPHAN"/>
+    </tag>
+    <address>
+      <entry name="SERVER"><ip-netmask>192.168.10.10</ip-netmask></entry>
+      <entry name="SHADOW"><ip-netmask>10.0.0.1</ip-netmask></entry>
+      <entry name="PARENT-OBJ"><ip-netmask>10.0.0.2</ip-netmask></entry>
+      <entry name="DNS-SHARED"><ip-netmask>10.0.0.53</ip-netmask></entry>
+      <entry name="ORPHAN"><ip-netmask>10.9.9.9</ip-netmask><tag><member>ON-ORPHAN</member></tag></entry>
+      <entry name="IN-UNUSED-GRP"><ip-netmask>10.8.8.8</ip-netmask></entry>
+      <entry name="NESTED-LEAF"><ip-netmask>10.7.7.7</ip-netmask></entry>
+      <entry name="TAGGED-1"><ip-netmask>10.6.6.6</ip-netmask><tag><member>PROD</member></tag></entry>
+      <entry name="WEB-A"><ip-netmask>172.16.0.1</ip-netmask></entry>
+      <entry name="MIXED"><ip-netmask>10.5.5.5</ip-netmask></entry>
+      <entry name="OVR-MEMBER"><ip-netmask>10.4.4.4</ip-netmask></entry>
+    </address>
+    <address-group>
+      <entry name="GRP-UNUSED"><static><member>IN-UNUSED-GRP</member></static></entry>
+      <entry name="GRP-NESTED-INNER"><static><member>NESTED-LEAF</member></static></entry>
+      <entry name="GRP-NESTED-OUTER"><static><member>GRP-NESTED-INNER</member></static></entry>
+      <entry name="GRP-DYN"><dynamic><filter>'PROD'</filter></dynamic></entry>
+      <entry name="GRP-SHARED-OVR"><static><member>OVR-MEMBER</member></static></entry>
+    </address-group>
+    <service>
+      <entry name="TCP-443"><protocol><tcp><port>443</port></tcp></protocol></entry>
+      <entry name="TCP-8443"><protocol><tcp><port>8443</port></tcp></protocol></entry>
+      <entry name="UDP-UNUSED"><protocol><udp><port>5000</port></udp></protocol></entry>
+    </service>
+    <service-group>
+      <entry name="SG-WEB"><members><member>TCP-8443</member></members></entry>
+    </service-group>
+    <external-list>
+      <entry name="EDL-1"><type><ip><url>https://edl.example/ip.txt</url></ip></type></entry>
+    </external-list>
+    <schedule>
+      <entry name="SCH-1"><schedule-type><non-recurring><member>2026/01/01@00:00-2026/01/02@00:00</member></non-recurring></schedule-type></entry>
+    </schedule>
+    <profiles>
+      <virus><entry name="AV-1"/></virus>
+      <spyware><entry name="AS-DIRECT"/></spyware>
+      <url-filtering><entry name="URL-1"><block><member>CUSTOM-CAT2</member></block></entry></url-filtering>
+      <custom-url-category>
+        <entry name="CUSTOM-CAT"><list><member>example.com</member></list></entry>
+        <entry name="CUSTOM-CAT2"><list><member>example.org</member></list></entry>
+      </custom-url-category>
+    </profiles>
+    <profile-group>
+      <entry name="PG-1"><virus><member>AV-1</member></virus></entry>
+    </profile-group>
+    <admin-role>
+      <entry name="ROLE-X"><role/></entry>
+    </admin-role>
+    <pre-rulebase>
+      <security><rules>
+        <entry name="SH-R1">
+          <source><member>any</member></source>
+          <destination><member>DNS-SHARED</member><member>SERVER</member></destination>
+          <service><member>TCP-443</member></service>
+          <application><member>ssl</member></application>
+          <log-setting>LFP-1</log-setting>
+          <profile-setting><group><member>PG-1</member></group></profile-setting>
+        </entry>
+      </rules></security>
+    </pre-rulebase>
+  </shared>
+</config>

@@ -1,0 +1,14 @@
+{
+  "name": "panorama-tools",
+  "description": "Ferramentas Claude Code para saneamento de configurações Palo Alto Panorama.",
+  "owner": {
+    "name": "Diogo de Alencar"
+  },
+  "plugins": [
+    {
+      "name": "panorama-cleanup",
+      "source": "./claude-plugin",
+      "description": "Inventário, análise de dependências e saneamento de objetos de backups XML do Panorama Palo Alto, com centralização em Shared e validação de equivalência."
+    }
+  ]
+}

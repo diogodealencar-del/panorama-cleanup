@@ -1,0 +1,35 @@
+# Ambiente
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Backups originais: contêm configuração sensível dos firewalls
+input/*
+!input/.gitkeep
+
+# Artefatos gerados por execução (rastreados pelo manifest de cada run)
+output/reports/*
+!output/reports/.gitkeep
+output/xml/
+cli/*
+!cli/.gitkeep
+rollback/*
+!rollback/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Documentação do fabricante (grande; obter em docs.paloaltonetworks.com)
+docs/referencias/*/*
+!docs/referencias/*/.gitkeep
+
+# macOS
+.DS_Store
+
+# Build
+*.egg-info/
+
+# Registro de execução de cliente (contém DGs, seriais e hashes reais; fica só na máquina)
+docs/etapas.md
+docs/etapa-09-procedimento-operacional.md
+docs/procedimento-uso-da-ferramenta.pdf

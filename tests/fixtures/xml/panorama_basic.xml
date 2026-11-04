@@ -1,0 +1,190 @@
+<?xml version="1.0"?>
+<config version="11.1.0" urldb="paloaltonetworks" detail-version="11.1.10">
+  <mgt-config>
+    <devices>
+      <entry name="000000000001"/>
+      <entry name="000000000002"/>
+      <entry name="000000000003"/>
+    </devices>
+  </mgt-config>
+  <devices>
+    <entry name="localhost.localdomain">
+      <template>
+        <entry name="T-RJ"/>
+        <entry name="T-BH"/>
+      </template>
+      <template-stack>
+        <entry name="S-RJ"/>
+      </template-stack>
+      <device-group>
+        <entry name="DG-RJ">
+          <address>
+            <entry name="SERVER">
+              <ip-netmask>192.168.10.10</ip-netmask>
+            </entry>
+            <entry name="DNS">
+              <ip-netmask>10.0.0.53</ip-netmask>
+              <description>=HYPERLINK("http://exemplo")</description>
+            </entry>
+          </address>
+          <address-group>
+            <entry name="GRP-RJ">
+              <static>
+                <member>SERVER</member>
+                <member>DNS</member>
+              </static>
+            </entry>
+          </address-group>
+          <service>
+            <entry name="TCP-8080">
+              <protocol><tcp><port>8080</port><override><no/></override></tcp></protocol>
+            </entry>
+          </service>
+          <post-rulebase>
+            <security>
+              <rules>
+                <entry name="R1" uuid="11111111-1111-1111-1111-111111111111">
+                  <source><member>SERVER</member></source>
+                </entry>
+              </rules>
+            </security>
+          </post-rulebase>
+          <devices>
+            <entry name="000000000001"/>
+          </devices>
+          <reference-templates>
+            <member>S-RJ</member>
+          </reference-templates>
+        </entry>
+        <entry name="DG-BH">
+          <tag>
+            <entry name="BH"><color>color3</color></entry>
+          </tag>
+          <address>
+            <entry name="SERVER">
+              <ip-netmask>192.168.20.10</ip-netmask>
+              <tag><member>BH</member></tag>
+            </entry>
+          </address>
+          <devices>
+            <entry name="000000000002"/>
+          </devices>
+        </entry>
+        <entry name="DG-BH-FILIAL">
+          <address>
+            <entry name="WEB FILIAL/01">
+              <fqdn>web.filial.example</fqdn>
+            </entry>
+          </address>
+          <application-group>
+            <entry name="APPS-WEB"><members><member>web-browsing</member><member>ssl</member></members></entry>
+          </application-group>
+          <application-filter>
+            <entry name="FILTER-RISK5"><risk><member>5</member></risk></entry>
+          </application-filter>
+          <devices>
+            <entry name="000000000003"/>
+          </devices>
+        </entry>
+      </device-group>
+    </entry>
+  </devices>
+  <readonly>
+    <devices>
+      <entry name="localhost.localdomain">
+        <device-group>
+          <entry name="DG-RJ"><id>11</id></entry>
+          <entry name="DG-BH"><id>12</id></entry>
+          <entry name="DG-BH-FILIAL"><id>13</id><parent-dg>DG-BH</parent-dg></entry>
+        </device-group>
+      </entry>
+    </devices>
+    <shared>
+      <address-group>
+        <entry name="GRP-ALL"><id>1</id></entry>
+      </address-group>
+    </shared>
+  </readonly>
+  <shared>
+    <log-settings>
+      <profiles>
+        <entry name="LFP-DEFAULT">
+          <match-list>
+            <entry name="Traffic"><log-type>traffic</log-type><send-to-panorama>yes</send-to-panorama></entry>
+            <entry name="Threat"><log-type>threat</log-type><send-to-panorama>yes</send-to-panorama></entry>
+          </match-list>
+        </entry>
+      </profiles>
+    </log-settings>
+    <tag>
+      <entry name="PROD"><color>color1</color></entry>
+      <entry name="DEV"/>
+    </tag>
+    <address>
+      <entry name="SERVER">
+        <ip-netmask>192.168.10.10</ip-netmask>
+      </entry>
+      <entry name="NET-RANGE">
+        <ip-range>10.1.1.1-10.1.1.20</ip-range>
+        <description>faixa</description>
+        <tag><member>PROD</member></tag>
+      </entry>
+      <entry name="SITE">
+        <fqdn>www.example.com</fqdn>
+      </entry>
+      <entry name="O'BRIEN">
+        <ip-netmask>10.9.9.9/32</ip-netmask>
+      </entry>
+    </address>
+    <address-group>
+      <entry name="GRP-ALL">
+        <static><member>SERVER</member><member>SITE</member></static>
+      </entry>
+      <entry name="GRP-DYN">
+        <dynamic><filter>'PROD'</filter></dynamic>
+      </entry>
+    </address-group>
+    <service>
+      <entry name="TCP-443">
+        <protocol><tcp><port>443</port><override><no/></override></tcp></protocol>
+      </entry>
+      <entry name="UDP-53">
+        <protocol><udp><port>53</port><override><no/></override></udp></protocol>
+      </entry>
+    </service>
+    <service-group>
+      <entry name="SG-WEB"><members><member>TCP-443</member></members></entry>
+    </service-group>
+    <application>
+      <entry name="APP-CUSTOM"><category>networking</category><risk>3</risk></entry>
+    </application>
+    <schedule>
+      <entry name="JANELA"><schedule-type><non-recurring><member>2026/01/01@00:00-2026/01/02@00:00</member></non-recurring></schedule-type></entry>
+    </schedule>
+    <external-list>
+      <entry name="EDL-BLOCK"><type><ip><url>https://edl.example/list.txt</url></ip></type></entry>
+    </external-list>
+    <profiles>
+      <virus>
+        <entry name="AV-DEFAULT"/>
+      </virus>
+      <spyware>
+        <entry name="AS-DEFAULT"/>
+        <entry name="AS-STRICT"/>
+      </spyware>
+    </profiles>
+    <profile-group>
+      <entry name="PG-DEFAULT"><virus><member>AV-DEFAULT</member></virus></entry>
+    </profile-group>
+    <admin-role>
+      <entry name="ROLE-X"><role/></entry>
+    </admin-role>
+    <pre-rulebase>
+      <security>
+        <rules>
+          <entry name="SHARED-R1" uuid="22222222-2222-2222-2222-222222222222"/>
+        </rules>
+      </security>
+    </pre-rulebase>
+  </shared>
+</config>

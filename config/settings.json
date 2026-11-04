@@ -1,0 +1,13 @@
+{
+  "paths": {
+    "input": "input",
+    "reports": "output/reports",
+    "xml_output": "output/xml",
+    "cli": "cli",
+    "rollback": "rollback",
+    "logs": "logs"
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
