@@ -10,6 +10,8 @@ Etapas 1 a 8 implementadas e validadas em Panorama PAN-OS 11.1 (incluindo commit
 
 ## Instalação
 
+Windows e Linux: ver [`docs/procedimento-windows-linux.md`](docs/procedimento-windows-linux.md) (instalação, PowerShell, Git Bash e validação no primeiro uso). Os comandos abaixo valem para macOS e Linux.
+
 Pré-requisitos: macOS ou Linux com `git`, Python 3.9+ e [`pipx`](https://pipx.pypa.io) (`brew install pipx` no macOS). Para a skill, o [Claude Code](https://claude.com/claude-code).
 
 ```sh

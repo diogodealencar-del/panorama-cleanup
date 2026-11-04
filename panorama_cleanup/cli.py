@@ -117,7 +117,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _safe_console() -> None:
+    """Console do Windows (cp1252/cp850) não quebra com caracteres fora da página de código."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv=None) -> int:
+    _safe_console()
     args = build_parser().parse_args(argv)
     try:
         settings = load_settings(args.config, root=args.workdir)
@@ -698,9 +708,19 @@ def run_commands(input_path, plan_dir, convert_dir, cleanup_dir, settings) -> in
                                      pattern))
             files[syntax_csv.name] = syntax_csv
 
-        syntax = subprocess.run(["bash", "-n", str(files["run-xmlapi.sh"])], capture_output=True, text=True)
-        add("run-xmlapi.sh: sintaxe bash válida (bash -n, sem executar)", syntax.returncode == 0,
-            syntax.stderr.strip())
+        # Sem bash (Windows sem Git Bash/WSL) a sintaxe não é conferida aqui: fica PENDENTE,
+        # sem bloquear; o script é o mesmo modelo fixo conferido nos testes automatizados.
+        import shutil
+        bash = shutil.which("bash")
+        if bash:
+            syntax = subprocess.run([bash, "-n", str(files["run-xmlapi.sh"])],
+                                    capture_output=True, text=True)
+            checks.append(("run-xmlapi.sh: sintaxe bash válida (bash -n, sem executar)",
+                           syntax.returncode == 0, syntax.stderr.strip()))
+        else:
+            checks.append(("run-xmlapi.sh: sintaxe bash válida (bash -n, sem executar)", None,
+                           "bash não encontrado nesta máquina; executar o script em Git Bash ou "
+                           "WSL e conferir com bash -n antes de usar"))
         malformed = [name for name, path in files.items() if name.endswith(".tsv")
                      and any(len(line.split("\t")) != 5
                              for line in path.read_text(encoding="utf-8").splitlines())]

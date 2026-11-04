@@ -14,7 +14,7 @@ dependências, rastreabilidade e validação comparativa.
 
 > **Sobre este documento.** Este é o procedimento usado para **construir**
 > a ferramenta com o Claude Code, etapa por etapa. A ferramenta já está
-> implementada (versão 0.2.2) e foi validada com commit e push em Panorama
+> implementada (versão 0.2.3) e foi validada com commit e push em Panorama
 > PAN-OS 11.1. Para **usar** a ferramenta, não é preciso recriar o projeto:
 >
 > - instalação e atualização: [`README.md`](README.md);

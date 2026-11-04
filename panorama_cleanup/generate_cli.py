@@ -305,6 +305,16 @@ def file_key(op: ApiOp, inv_types: dict) -> int:
     return op.phase
 
 
+def _write_lf(path: Path, text: str) -> None:
+    """Grava texto UTF-8 com quebra de linha LF em qualquer sistema.
+
+    No Windows, a gravação em modo texto converteria "\n" em "\r\n"; o run-xmlapi.sh
+    deixaria de funcionar no bash e os arquivos (e seus sha256) mudariam conforme o SO.
+    """
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+
+
 def write_command_files(out_dir, api_ops, inv_types, meta: dict) -> dict:
     """Grava os arquivos de comandos; devolve {nome: caminho} e o índice de comandos."""
     import csv
@@ -369,7 +379,7 @@ def write_command_files(out_dir, api_ops, inv_types, meta: dict) -> dict:
                               command=cli_text or "(sem forma segura; usar XML API)",
                               expected_result="comando aceito sem erro; candidate config alterado",
                               validation=_validation(op)))
-        cli.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        _write_lf(cli, "\n".join(lines) + "\n")
         files[cli.name] = cli
 
     columns = ("seq", "phase", "file", "operation", "interface", "context", "target", "command",
@@ -382,13 +392,13 @@ def write_command_files(out_dir, api_ops, inv_types, meta: dict) -> dict:
     files[idx.name] = idx
 
     runner = out_dir / "run-xmlapi.sh"
-    runner.write_text(RUNNER, encoding="utf-8")
+    _write_lf(runner, RUNNER)
     runner.chmod(0o750)
     files[runner.name] = runner
 
     for name, text in documents(meta, {k: len(v) for k, v in groups.items()}).items():
         path = out_dir / name
-        path.write_text(text, encoding="utf-8")
+        _write_lf(path, text)
         files[name] = path
     return files
 
@@ -542,13 +552,17 @@ se o Panorama estiver exatamente nesse estado.
 1. Na interface web, abra **Commit > Preview Changes** e confirme que **não há alterações pendentes**
    no candidate config. Se houver, pare.
 2. Exporte a configuração atual (passos do arquivo `02-backup.cli`).
-3. Na estação, rode a ferramenta sobre o arquivo exportado, em uma pasta própria em `input/`:
+3. Na estação, rode a ferramenta sobre o arquivo exportado, numa pasta de trabalho **nova**
+   (`W`), separada da usada no plano aprovado:
 
 ```sh
-python -m panorama_cleanup inventory --input input/<exportado>.xml
-python -m panorama_cleanup analyze   --input input/<exportado>.xml --inventory output/reports/<run inventory>
-python -m panorama_cleanup plan      --input input/<exportado>.xml --analysis  output/reports/<run analyze>
+panorama-cleanup --workdir W inventory --input W/input/<exportado>.xml
+panorama-cleanup --workdir W analyze   --input W/input/<exportado>.xml --inventory W/output/reports/<run inventory>
+panorama-cleanup --workdir W plan      --input W/input/<exportado>.xml --analysis  W/output/reports/<run analyze>
 ```
+
+   No Windows (PowerShell), os mesmos comandos com caminhos do Windows; ver
+   `docs/procedimento-windows-linux.md` da ferramenta.
 
 4. Compare o `plan.json` gerado com o do plano aprovado `{meta['plan_run']}`: a lista `operations`
    deve ser **idêntica**. Se o sha256 do arquivo exportado for igual a `{meta['input_sha']}`, o estado

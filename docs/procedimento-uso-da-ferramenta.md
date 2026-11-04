@@ -35,6 +35,8 @@ A ferramenta lê um backup XML do Panorama e, em etapas separadas e aprovadas um
 
 ## 2. Pré-requisitos
 
+> Windows e Linux: ver [`procedimento-windows-linux.md`](procedimento-windows-linux.md).
+
 | Item | Como conferir |
 |---|---|
 | macOS ou Linux com Python 3.9+ (recomendado 3.12+) | `python3 --version` |

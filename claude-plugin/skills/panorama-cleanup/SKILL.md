@@ -5,7 +5,7 @@ description: Ferramenta determinística incluída (execute-a; nunca analise o XM
 
 <!-- Gerado por scripts/build_skill.py a partir de skill/. Não edite este arquivo: edite skill/ e rode o build. -->
 
-# Saneamento de objetos do Panorama (panorama-cleanup 0.2.2)
+# Saneamento de objetos do Panorama (panorama-cleanup 0.2.3)
 
 Conduz a ferramenta `panorama-cleanup` sobre um backup XML do Panorama, etapa por etapa, com aprovação explícita entre etapas. Prioridade absoluta: o comportamento das políticas de cada firewall não pode mudar. O valor efetivo de cada objeto, resolvido pela herança Shared > DG ancestral > DG, deve ser idêntico antes e depois.
 

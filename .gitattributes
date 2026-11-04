@@ -1,0 +1,7 @@
+# Mesmo conteúdo em todos os sistemas: LF no checkout, inclusive no Windows
+# (core.autocrlf=true converteria scripts, fixtures XML e skill para CRLF).
+* text=auto eol=lf
+*.pdf binary
+*.xlsx binary
+*.zip binary
+*.png binary
