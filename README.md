@@ -10,19 +10,31 @@ Etapas 1 a 8 implementadas e validadas em Panorama PAN-OS 11.1 (incluindo commit
 
 ## Instalação (você e a equipe)
 
+Pré-requisitos: acesso ao repositório privado (peça para ser adicionado como colaborador) e credencial do GitHub no git. Por exemplo, um fine-grained token com **Contents: Read** neste repositório, informado no primeiro `git clone` e guardado pelo Keychain do macOS. Não cole o token em chats nem em arquivos.
+
 ```sh
-git clone <url-do-repositório> ~/panorama-cleanup
+git clone https://github.com/diogodealencar-del/panorama-cleanup.git ~/panorama-cleanup
 pipx install -e ~/panorama-cleanup          # comando `panorama-cleanup` em qualquer pasta
 ```
 
-Sempre instale em modo editável (`-e`): `config/settings.json` e `docs/referencias/` são lidos do clone. O guia oficial da versão (`docs/referencias/pan-os-X.Y/ngfw-cli.md`) não vai no git: copie-o para o clone (ver `docs/referencias/README.md`).
+Sempre instale em modo editável (`-e`): `config/settings.json` e `docs/referencias/` são lidos do clone. O guia oficial da versão (`docs/referencias/pan-os-X.Y/ngfw-cli.md`) não vai no git: copie-o para o clone (ver `docs/referencias/README.md`). Sem ele, a Etapa 7 para.
 
 Skill do Claude Code (plugin `panorama-cleanup` do marketplace `panorama-tools`, neste repositório):
 
 ```sh
-claude plugin marketplace add ~/panorama-cleanup     # ou a URL git do repositório
+claude plugin marketplace add ~/panorama-cleanup
 claude plugin install panorama-cleanup@panorama-tools
 ```
+
+Atualizar (ferramenta e skill):
+
+```sh
+git -C ~/panorama-cleanup pull
+claude plugin marketplace update panorama-tools
+claude plugin update panorama-cleanup@panorama-tools   # reinicie o Claude Code em seguida
+```
+
+A skill só muda quando o `version` de `claude-plugin/.claude-plugin/plugin.json` aumenta. Ao publicar uma alteração da skill, aumente-o e rode `claude plugin validate .` antes do commit.
 
 Depois disso, em qualquer pasta, basta pedir ao Claude Code algo como "analise o backup do Panorama em ~/Downloads/running-config.xml". A skill conduz as etapas com aprovação entre elas.
 
