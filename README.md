@@ -8,13 +8,14 @@ As regras do projeto estão no [`CLAUDE.md`](CLAUDE.md). A prioridade absoluta �
 
 Etapas 1 a 8 implementadas e validadas em Panorama PAN-OS 11.1 (incluindo commit e push em ambiente real). Todos os modos implementados: `inventory`, `analyze`, `plan`, `apply` e `validate`. Implantação pela Panorama XML API. Procedimento: [`docs/procedimento-uso-da-ferramenta.md`](docs/procedimento-uso-da-ferramenta.md); modelo de homologação, implantação e rollback: [`docs/modelo-etapa-09.md`](docs/modelo-etapa-09.md). Como a ferramenta foi construída (prompts por etapa e decisões): [`Procedimento_Panorama_Configuration_Analyzer.md`](Procedimento_Panorama_Configuration_Analyzer.md).
 
-## Instalação (você e a equipe)
+## Instalação
 
-Pré-requisitos: acesso ao repositório privado (peça para ser adicionado como colaborador) e credencial do GitHub no git. Por exemplo, um fine-grained token com **Contents: Read** neste repositório, informado no primeiro `git clone` e guardado pelo Keychain do macOS. Não cole o token em chats nem em arquivos.
+Pré-requisitos: macOS ou Linux com `git`, Python 3.9+ e [`pipx`](https://pipx.pypa.io) (`brew install pipx` no macOS). Para a skill, o [Claude Code](https://claude.com/claude-code).
 
 ```sh
 git clone https://github.com/diogodealencar-del/panorama-cleanup.git ~/panorama-cleanup
 pipx install -e ~/panorama-cleanup          # comando `panorama-cleanup` em qualquer pasta
+panorama-cleanup --version
 ```
 
 Sempre instale em modo editável (`-e`): `config/settings.json` e `docs/referencias/` são lidos do clone. O guia oficial da versão (`docs/referencias/pan-os-X.Y/ngfw-cli.md`) não vai no git: copie-o para o clone (ver `docs/referencias/README.md`). Sem ele, a Etapa 7 para.
