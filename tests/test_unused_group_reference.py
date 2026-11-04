@@ -74,7 +74,12 @@ def test_full_chain_applies_update_and_is_approved(tmp_path):
     assert main(w + ["apply", "--stage", "cleanup", "--keep-type", "tag", "--input", b,
                      "--plan", str(plan), "--from-run", str(convert)]) == EXIT_OK
     cleanup = _latest(work, "apply-cleanup")
+    review = {r["name"]: r for r in csv.DictReader(open(cleanup / "unused-review.csv", encoding="utf-8"))}
+    # Antes da correção da Etapa 6, o grupo era mantido com "valor difere do plano": o
+    # membro já renomeado na fase 2 era comparado com o valor do original.
+    assert review["PT_TCP_AD"]["status"] == "excluído", review["PT_TCP_AD"]
     final = next((work / "output" / "xml" / cleanup.name).glob("*.final.xml"))
+    assert 'name="PT_TCP_AD"' not in final.read_text(encoding="utf-8")
     assert main(w + ["validate", "--input", b, "--modified", str(final), "--plan", str(plan),
                      "--convert-run", str(convert), "--cleanup-run", str(cleanup)]) == EXIT_OK
     manifest = json.loads((_latest(work, "validate") / "manifest.json").read_text(encoding="utf-8"))

@@ -5,7 +5,7 @@ description: Ferramenta determinística incluída (execute-a; nunca analise o XM
 
 <!-- Gerado por scripts/build_skill.py a partir de skill/. Não edite este arquivo: edite skill/ e rode o build. -->
 
-# Saneamento de objetos do Panorama (panorama-cleanup 0.2.5)
+# Saneamento de objetos do Panorama (panorama-cleanup 0.2.6)
 
 Conduz a ferramenta `panorama-cleanup` sobre um backup XML do Panorama, etapa por etapa, com aprovação explícita entre etapas. Prioridade absoluta: o comportamento das políticas de cada firewall não pode mudar. O valor efetivo de cada objeto, resolvido pela herança Shared > DG ancestral > DG, deve ser idêntico antes e depois.
 
@@ -87,7 +87,7 @@ O XML final fica em `$W/output/xml/<run apply-cleanup>/*.final.xml`. Os comandos
 
 ## Decisões padrão (mudar exige aprovação explícita)
 
-- **Tags:** nenhuma é criada, movida, alterada ou excluída (`--keep-type tag`).
+- **Tags:** nenhuma é criada, movida, alterada ou excluída. O plano mantém toda tag de DG no próprio DG, e objetos que dependem dela também ficam (motivo em `kept-local-objects.csv`); na Etapa 6, `--keep-type tag`. Não há opção para mover tags: a Etapa 8 reprova qualquer tag fora do escopo original.
 - **Objetos de DG que sobrepõem Shared e são usados por definições de Shared:** ficam no DG (KEEP_LOCAL).
 - **Descrições em consolidação:** vale a do objeto mantido em Shared; as perdidas são listadas para aceite.
 - **Implantação:** XML API. A CLI só entra se a sintaxe estiver confirmada para a versão.

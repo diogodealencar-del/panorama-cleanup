@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<!-- Fictício. Tags de DG em uso: AMCOM existe em DG-A e DG-B com a mesma cor (antes
+     o plano a movia/consolidava para Shared, e a Etapa 8 reprovava "tag nova em Shared");
+     SRV-A usa a tag e é usado por regra; WEB é idêntico nos dois DGs e não tem tag. -->
+<config version="11.1.0" urldb="paloaltonetworks" detail-version="11.1.10">
+  <mgt-config>
+    <devices>
+      <entry name="000000000021"/>
+      <entry name="000000000022"/>
+    </devices>
+  </mgt-config>
+  <devices>
+    <entry name="localhost.localdomain">
+      <device-group>
+        <entry name="DG-A">
+          <tag>
+            <entry name="AMCOM"><color>color36</color></entry>
+          </tag>
+          <address>
+            <entry name="SRV-A">
+              <ip-netmask>10.1.0.10</ip-netmask>
+              <tag><member>AMCOM</member></tag>
+            </entry>
+            <entry name="WEB">
+              <ip-netmask>10.9.0.80</ip-netmask>
+            </entry>
+          </address>
+          <post-rulebase>
+            <security>
+              <rules>
+                <entry name="R-A" uuid="55555555-5555-5555-5555-555555555555">
+                  <from><member>any</member></from>
+                  <to><member>any</member></to>
+                  <source><member>SRV-A</member></source>
+                  <destination><member>WEB</member></destination>
+                  <application><member>any</member></application>
+                  <service><member>application-default</member></service>
+                  <tag><member>AMCOM</member></tag>
+                  <action>allow</action>
+                </entry>
+              </rules>
+            </security>
+          </post-rulebase>
+          <devices>
+            <entry name="000000000021"/>
+          </devices>
+        </entry>
+        <entry name="DG-B">
+          <tag>
+            <entry name="AMCOM"><color>color36</color></entry>
+          </tag>
+          <address>
+            <entry name="WEB">
+              <ip-netmask>10.9.0.80</ip-netmask>
+            </entry>
+          </address>
+          <post-rulebase>
+            <security>
+              <rules>
+                <entry name="R-B" uuid="66666666-6666-6666-6666-666666666666">
+                  <from><member>any</member></from>
+                  <to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>WEB</member></destination>
+                  <application><member>any</member></application>
+                  <service><member>application-default</member></service>
+                  <tag><member>AMCOM</member></tag>
+                  <action>allow</action>
+                </entry>
+              </rules>
+            </security>
+          </post-rulebase>
+          <devices>
+            <entry name="000000000022"/>
+          </devices>
+        </entry>
+      </device-group>
+    </entry>
+  </devices>
+  <shared/>
+  <readonly>
+    <devices>
+      <entry name="localhost.localdomain">
+        <device-group>
+          <entry name="DG-A"><id>21</id></entry>
+          <entry name="DG-B"><id>22</id></entry>
+        </device-group>
+      </entry>
+    </devices>
+  </readonly>
+</config>

@@ -502,16 +502,21 @@ def run_cleanup(input_path: Path, plan_dir: Path, from_run: Path, settings: Sett
     try:
         original = parse_backup(ctx.input_path)
         an_original = run_analysis(original)
-        plan_run, operations, _ = load_approved_plan(plan_dir, ctx, an_original)
+        plan_run, operations, copies = load_approved_plan(plan_dir, ctx, an_original)
         convert_run, converted_path, converted_sha, rule_renames = load_convert_run(
             from_run, ctx, plan_run)
         log.info("Plano %s; XML convertido %s (%s)", plan_run, converted_path, convert_run)
 
         converted = parse_backup(converted_path)
         an_converted = run_analysis(converted)
-        # O plano foi provado idêntico ao recalculado sobre o original: o valor de
-        # referência de cada candidato é o do original no mesmo XPath.
-        planned_values = {r.xpath: r.value for r in an_original.inventory.records}
+        # Valor de referência de cada candidato: o do estado esperado após as fases 1-3
+        # do plano aprovado (original + plano), e não o do original. Assim, uma
+        # atualização de membro feita na fase 2 (ex.: grupo sem uso cujo membro foi
+        # renomeado) não é confundida com alteração; qualquer mudança fora do plano
+        # continua mantendo o objeto.
+        from panorama_cleanup.inventory import build_inventory
+        expected = apply_plan(original, operations, copies).tree
+        planned_values = {r.xpath: r.value for r in build_inventory(expected).records}
         candidates = review_candidates(converted, an_converted, operations, planned_values,
                                        keep_types)
         if keep_types:

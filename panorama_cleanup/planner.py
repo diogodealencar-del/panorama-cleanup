@@ -104,8 +104,9 @@ def check_tag_invariant(inv, plan) -> None:
         if u["field"] in TAG_FIELDS:
             raise PlanError(f"Plano alteraria tag do objeto {inv.records[u['source']].xpath}")
     for key, d in plan.decisions.items():
-        if inv.records[key].object_type == "tag" and d.action == RENAME_MOVE:
-            raise PlanError(f"Plano renomearia a tag {inv.records[key].xpath}")
+        if inv.records[key].object_type == "tag" and d.action in (MOVE, RENAME_MOVE, CONSOLIDATE):
+            raise PlanError(f"Plano moveria ou consolidaria a tag {inv.records[key].xpath} "
+                            f"({d.action}); tags não são criadas nem movidas")
 
 
 class _Planner:
@@ -147,6 +148,13 @@ class _Planner:
                                         "utilização UNKNOWN")
             elif status == "UNUSED":
                 decisions[i] = Decision(i, DELETE_UNUSED, "", "", -1, usage[i].reason)
+            elif rec.object_type == "tag":
+                # Decisão padrão (D17): nenhuma tag é criada, movida ou excluída. Objetos
+                # que dependem dela e iriam para Shared são mantidos pela verificação de
+                # dependências (a cópia em Shared não resolveria a tag).
+                decisions[i] = Decision(i, KEEP_LOCAL, rec.scope, rec.name, -1,
+                                        "tags não são movidas para Shared (decisão padrão: "
+                                        "nenhuma tag é criada, movida ou excluída)")
 
         for (family, name), indexes in sorted(groups.items()):
             pending = [i for i in indexes if i not in decisions]

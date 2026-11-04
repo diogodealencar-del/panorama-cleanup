@@ -38,7 +38,7 @@ O XML final fica em `$W/output/xml/<run apply-cleanup>/*.final.xml`. Os comandos
 
 ## Decisões padrão (mudar exige aprovação explícita)
 
-- **Tags:** nenhuma é criada, movida, alterada ou excluída (`--keep-type tag`).
+- **Tags:** nenhuma é criada, movida, alterada ou excluída. O plano mantém toda tag de DG no próprio DG, e objetos que dependem dela também ficam (motivo em `kept-local-objects.csv`); na Etapa 6, `--keep-type tag`. Não há opção para mover tags: a Etapa 8 reprova qualquer tag fora do escopo original.
 - **Objetos de DG que sobrepõem Shared e são usados por definições de Shared:** ficam no DG (KEEP_LOCAL).
 - **Descrições em consolidação:** vale a do objeto mantido em Shared; as perdidas são listadas para aceite.
 - **Implantação:** XML API. A CLI só entra se a sintaxe estiver confirmada para a versão.
