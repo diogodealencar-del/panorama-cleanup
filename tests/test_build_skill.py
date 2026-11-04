@@ -130,3 +130,14 @@ def test_inventory_runs_from_read_only_skill(extracted, tmp_path):
     runs = list((work / "output" / "reports").iterdir())
     assert len(runs) == 1 and (runs[0] / "inventory.xlsx").is_file()
     assert not list(extracted.rglob("__pycache__"))
+
+
+def test_public_zip_has_no_vendor_guides(tmp_path):
+    public = build_skill.build_zip(tmp_path, with_guides=False)
+    assert public.name.endswith("-sem-guia.zip")
+    with zipfile.ZipFile(public) as z:
+        names = z.namelist()
+        manifest = json.loads(z.read(f"{build_skill.TOP}/MANIFEST.json"))
+    assert not [n for n in names if n.endswith("ngfw-cli.md")]
+    assert manifest["cli_guides"] == []
+    assert f"{build_skill.TOP}/scripts/docs/referencias/README.md" in names

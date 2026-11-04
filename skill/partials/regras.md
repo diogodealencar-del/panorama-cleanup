@@ -6,7 +6,7 @@
 4. **Uma etapa por vez.** Ao fim de cada etapa: apresente resultados, limitações e o que revisar, e **pare**. Não inicie a etapa seguinte sem aprovação explícita. Nenhum modo encadeia o próximo.
 5. **UNKNOWN nunca é removido.** Objeto só é excluído com ausência de uso comprovada. Mesmo nome com valor diferente vira `NOME_DG` em Shared, nunca um objeto só.
 6. **Não inventar sintaxe.** Comandos só da versão identificada no backup, conferidos contra o guia oficial dessa versão. Se faltar evidência, interrompa a operação e documente a limitação.
-7. **Qualquer inconsistência = NÃO APROVADO.** Não contorne verificações nem relativize falhas de integridade.
+7. **Qualquer inconsistência = NÃO APROVADO.** Não contorne verificações nem relativize falhas de integridade. Ao revisar uma etapa, procure em **todos** os CSVs do run, não só no `integrity-checks.csv`, por `FALHA`, `ERRO`, `NÃO APLICADO` ou `NÃO`. Qualquer ocorrência bloqueia a etapa até ser explicada pela ferramenta.
 8. **Diferencie** ação solicitada, executada e validada. Declare o que não foi verificado.
 9. **Toda análise sai da ferramenta.** Não classifique objetos, não resolva herança, não conte objetos e não afirme equivalência lendo o XML por conta própria (nem com scripts improvisados). Todo número apresentado ao usuário cita o relatório da ferramenta de onde veio (arquivo e run). Se a ferramenta não rodar, pare e diga por quê.
 10. **Escopo: objetos.** Não faça auditoria geral de segurança (interfaces, VPN, autenticação, ordem de regras, perfis). Se, ao ler um relatório da ferramenta, algo fora do escopo parecer grave, mencione em uma linha como "fora do escopo, verificar" e siga a etapa.

@@ -27,13 +27,19 @@ from dataclasses import dataclass, field, replace
 
 from panorama_cleanup.duplicate_analyzer import NAME_FAMILY
 from panorama_cleanup.effective_model import (
-    State, compare, objects_from_inventory, rule_refs_from_graph, with_changes,
+    State, compare, compare_objects, objects_from_inventory, rule_refs_from_graph, with_changes,
 )
 from panorama_cleanup.errors import PanoramaCleanupError
 from panorama_cleanup.xml_reader import SHARED
 
 KEEP, MOVE, RENAME_MOVE, CONSOLIDATE = "KEEP", "MOVE", "RENAME_MOVE", "CONSOLIDATE"
 DELETE_UNUSED, KEEP_LOCAL, PENDING = "DELETE_UNUSED", "KEEP_LOCAL", "PENDING_DECISION"
+# Objetos que continuam no DG durante as fases 1-3 e cujos membros são atualizados na
+# fase 2. DELETE_UNUSED só sai na fase 4 (que pode ser adiada): o membro precisa
+# continuar resolvendo para o mesmo valor até lá.
+LOCAL_UPDATE_ACTIONS = (KEEP_LOCAL, PENDING, DELETE_UNUSED)
+# Objetos copiados para Shared: a atualização vai na cópia (fase 1).
+COPY_UPDATE_ACTIONS = (MOVE, RENAME_MOVE)
 CHANGES = (MOVE, RENAME_MOVE, CONSOLIDATE, DELETE_UNUSED)
 
 MOVABLE_TYPES = frozenset({
@@ -277,7 +283,7 @@ class _Planner:
         phase1 = self.objects + copies
 
         local_renames = {k: v for k, v in renames.items()
-                         if decisions[k[0]].action in (KEEP_LOCAL, PENDING)}
+                         if decisions[k[0]].action in LOCAL_UPDATE_ACTIONS}
         phase2 = with_changes(phase1, {}, set(), local_renames)
 
         removed = {k for k, d in decisions.items() if d.action in (MOVE, RENAME_MOVE, CONSOLIDATE)}
@@ -316,7 +322,24 @@ class _Planner:
                             f"transparência: alteraria o valor efetivo na fase {phase} em "
                             f"{context} ({ref.source_xpath} campo {ref.field})"))
                 checked = sum(len(state.firewall_contexts(r.source_scope)) for r in self.rule_refs)
-                verification.append((phase, "todos", checked, len(diffs)))
+                verification.append((phase, "referências de regra", checked, len(diffs)))
+                present = {o.key: o for o in state.objects if o.key >= 0}
+                pairs = [(o, present[o.key]) for o in self.before.objects
+                         if o.leaf is None and o.key in present]
+                object_diffs = compare_objects(self.before, state, pairs)
+                for context, obj, _, _, touched in object_diffs:
+                    keys = {abs(k) - 1 if k < 0 else k for k in touched}
+                    changed = [k for k in keys if decisions[k].action in CHANGES]
+                    if not changed:
+                        raise PlanError(f"Diferença na fase {phase} em {context} sem objeto "
+                                        f"alterado: grupo {obj.scope}:{obj.name}")
+                    for k in changed:
+                        demote.setdefault(k, (
+                            f"transparência: alteraria o valor efetivo do grupo {obj.scope}:"
+                            f"{obj.name} na fase {phase} em {context}"))
+                verification.append((phase, "grupos remanescentes",
+                                     sum(len(state.firewall_contexts(o.scope)) for o, _ in pairs),
+                                     len(object_diffs)))
                 for problem_obj, field_name, name in state.unresolved_object_refs(self.known_names):
                     key = abs(problem_obj.key) - 1 if problem_obj.key < 0 else problem_obj.key
                     culprits = [key] if decisions[key].action in CHANGES else []
@@ -377,8 +400,14 @@ def operation_sequence(inv, plan) -> list:
     for u in sorted(plan.rule_updates, key=lambda u: (u["source_xpath"], u["field"], u["old"])):
         ops.append((2, "UPDATE_RULE_REFERENCE", u["target"], u))
     for u in sorted(plan.object_updates, key=lambda u: (u["source"], u["field"], u["old"])):
-        if decisions[u["source"]].action in (KEEP_LOCAL, PENDING):
+        action = decisions[u["source"]].action
+        if action in LOCAL_UPDATE_ACTIONS:
             ops.append((2, "UPDATE_OBJECT_REFERENCE", u["target"], u))
+        elif action not in COPY_UPDATE_ACTIONS:
+            src = inv.records[u["source"]]
+            raise PlanError(f"Plano inconsistente: atualização de membro {u['old']!r} -> "
+                            f"{u['new']!r} em {src.scope}:{src.name}, cuja decisão é {action}; "
+                            "não há operação que a aplique")
     deletions = [k for k, d in decisions.items() if d.action in (MOVE, RENAME_MOVE, CONSOLIDATE)]
     for key in sorted(deletions, key=order, reverse=True):
         ops.append((3, "DELETE_LOCAL_COPY", key, decisions[key]))

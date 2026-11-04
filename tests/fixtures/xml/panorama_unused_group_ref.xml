@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<!-- Fictício. Reproduz o caso Site_REC: service "389" local diferente do de Shared
+     (CONFLICT -> RENAME_MOVE 389_DG-REC), usado por regra do DG; o 389 de Shared é
+     usado pelo DG-OUTRO; grupo local PT_TCP_AD
+     sem uso (DELETE_UNUSED) com membro 389. Entre as fases 3 e 4 o grupo continua no
+     DG, então o membro precisa ser atualizado na fase 2. -->
+<config version="11.1.0" urldb="paloaltonetworks" detail-version="11.1.10">
+  <mgt-config>
+    <devices>
+      <entry name="000000000011"/>
+      <entry name="000000000012"/>
+    </devices>
+  </mgt-config>
+  <devices>
+    <entry name="localhost.localdomain">
+      <device-group>
+        <entry name="DG-REC">
+          <service>
+            <entry name="389">
+              <protocol><tcp><port>389</port><override><no/></override></tcp></protocol>
+            </entry>
+          </service>
+          <service-group>
+            <entry name="PT_TCP_AD">
+              <members>
+                <member>389</member>
+              </members>
+            </entry>
+          </service-group>
+          <post-rulebase>
+            <security>
+              <rules>
+                <entry name="R-LDAP" uuid="22222222-2222-2222-2222-222222222222">
+                  <from><member>any</member></from>
+                  <to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>any</member></destination>
+                  <application><member>any</member></application>
+                  <service><member>389</member></service>
+                  <action>allow</action>
+                </entry>
+              </rules>
+            </security>
+          </post-rulebase>
+          <devices>
+            <entry name="000000000011"/>
+          </devices>
+        </entry>
+        <entry name="DG-OUTRO">
+          <post-rulebase>
+            <security>
+              <rules>
+                <entry name="R-OUTRO" uuid="44444444-4444-4444-4444-444444444444">
+                  <from><member>any</member></from>
+                  <to><member>any</member></to>
+                  <source><member>any</member></source>
+                  <destination><member>any</member></destination>
+                  <application><member>any</member></application>
+                  <service><member>389</member></service>
+                  <action>allow</action>
+                </entry>
+              </rules>
+            </security>
+          </post-rulebase>
+          <devices>
+            <entry name="000000000012"/>
+          </devices>
+        </entry>
+      </device-group>
+    </entry>
+  </devices>
+  <shared>
+    <service>
+      <entry name="389">
+        <protocol><tcp><port>389</port><source-port>389</source-port><override><no/></override></tcp></protocol>
+      </entry>
+    </service>
+  </shared>
+  <readonly>
+    <devices>
+      <entry name="localhost.localdomain">
+        <device-group>
+          <entry name="DG-REC"><id>11</id></entry>
+          <entry name="DG-OUTRO"><id>12</id></entry>
+        </device-group>
+      </entry>
+    </devices>
+  </readonly>
+</config>

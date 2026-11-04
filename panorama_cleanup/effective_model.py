@@ -201,6 +201,26 @@ def compare(before: State, after: State, refs_before: list, renames: dict) -> li
     return diffs
 
 
+def compare_objects(before: State, after: State, pairs: list) -> list:
+    """Valor efetivo de cada grupo que continua existindo, em cada contexto de firewall.
+
+    pairs: [(objeto antes, mesmo objeto depois)]. Cobre também grupos sem uso: o XML
+    intermediário (fases 1-3) pode ir para produção sem a fase 4, e um grupo que muda de
+    significado em silêncio quebraria quem passar a usá-lo.
+    Retorna [(contexto, objeto antes, valores antes, valores depois, chaves atravessadas)].
+    """
+    diffs = []
+    for obj_before, obj_after in pairs:
+        if obj_before.leaf is not None:
+            continue
+        for context in before.firewall_contexts(obj_before.scope):
+            v_before, t_before = before.expand_object(context, obj_before)
+            v_after, t_after = after.expand_object(context, obj_after)
+            if v_before != v_after:
+                diffs.append((context, obj_before, v_before, v_after, t_before | t_after))
+    return diffs
+
+
 def with_changes(objects: list, scope_name: dict, removed: set, member_renames: dict) -> list:
     """Novo conjunto de objetos aplicando movimentos, remoções e renomeação de membros.
 

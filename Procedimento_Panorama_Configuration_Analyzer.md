@@ -14,7 +14,7 @@ dependências, rastreabilidade e validação comparativa.
 
 > **Sobre este documento.** Este é o procedimento usado para **construir**
 > a ferramenta com o Claude Code, etapa por etapa. A ferramenta já está
-> implementada (versão 0.2.4) e foi validada com commit e push em Panorama
+> implementada (versão 0.2.5) e foi validada com commit e push em Panorama
 > PAN-OS 11.1. Para **usar** a ferramenta, não é preciso recriar o projeto:
 >
 > - instalação e atualização: [`README.md`](README.md);
@@ -928,7 +928,7 @@ A sequência resumida para utilização diária, com a ferramenta pronta:
 5.  ANALYZE: conferir não resolvidos, UNKNOWN e objetos dependentes de contexto.
 6.  PLAN: plan-verification.csv com 0 diferenças; revisar nomes, descrições, mantidos e exclusões. Aprovar.
 7.  APPLY (convert): integridade toda OK.
-8.  APPLY --stage cleanup --keep-type tag: integridade 14/14 OK.
+8.  APPLY --stage cleanup --keep-type tag: integridade toda OK.
 9.  PLAN --stage commands: generation-checks.csv OK; definir XML API como interface.
 10. VALIDATE: APROVADO.
 11. Homologar em laboratório (run-xmlapi.sh, validate --exported, ensaio de rollback).

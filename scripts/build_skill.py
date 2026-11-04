@@ -118,14 +118,14 @@ def _vendor_files():
     return out
 
 
-def collect(ver: str):
+def collect(ver: str, with_guides: bool = True):
     files = [("SKILL.md", render("chat", ver).encode("utf-8")),
              ("scripts/run.py", (SKILL_SRC / "run.py").read_bytes()),
              ("scripts/config/settings.json", (ROOT / "config" / "settings.json").read_bytes()),
              ("docs/modelo-etapa-09.md", (ROOT / "docs" / "modelo-etapa-09.md").read_bytes())]
     for py in sorted((ROOT / "panorama_cleanup").glob("*.py")):
         files.append((f"scripts/panorama_cleanup/{py.name}", py.read_bytes()))
-    guides = sorted((ROOT / "docs" / "referencias").glob("pan-os-*/ngfw-cli.md"))
+    guides = sorted((ROOT / "docs" / "referencias").glob("pan-os-*/ngfw-cli.md")) if with_guides else []
     for g in guides:
         files.append((f"scripts/docs/referencias/{g.parent.name}/ngfw-cli.md", g.read_bytes()))
     files.append(("scripts/docs/referencias/README.md",
@@ -171,9 +171,11 @@ def _check_allowed(files) -> None:
         raise BuildError(f"{len(names) + 1} arquivos no zip; o claude.ai aceita no máximo {MAX_FILES}")
 
 
-def build_zip(out_dir: Path = DIST) -> Path:
+def build_zip(out_dir: Path = DIST, with_guides: bool = True) -> Path:
+    """with_guides=False: sem os guias da Palo Alto, para distribuição pública (Etapa 7
+    indisponível nesse pacote)."""
     ver = version()
-    files, guides = collect(ver)
+    files, guides = collect(ver, with_guides)
     vendored = {d: md.version(d) for d, _ in VENDOR}
     manifest = {
         "name": TOP, "version": ver, "source_commit": _git_commit(),
@@ -183,7 +185,7 @@ def build_zip(out_dir: Path = DIST) -> Path:
     }
     files.append(("MANIFEST.json", (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode()))
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / f"{TOP}-skill-{ver}.zip"
+    target = out_dir / f"{TOP}-skill-{ver}{'' if with_guides else '-sem-guia'}.zip"
     tmp = target.with_suffix(".zip.tmp")
     tmp.write_bytes(_zip_bytes([(f"{TOP}/{n}", b) for n, b in files]))
     tmp.replace(target)
@@ -201,6 +203,9 @@ def write_plugin_skill() -> bool:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--sem-guias", action="store_true",
+                        help="gera o zip sem os guias de CLI da Palo Alto (distribuição pública; "
+                             "a Etapa 7 fica indisponível nesse pacote)")
     parser.add_argument("--check", action="store_true",
                         help="só confere se o SKILL.md do plugin corresponde a skill/")
     args = parser.parse_args(argv)
@@ -211,7 +216,7 @@ def main(argv=None) -> int:
                   "SKILL.md do plugin desatualizado: rode python scripts/build_skill.py")
             return 0 if ok else 1
         changed = write_plugin_skill()
-        target = build_zip()
+        target = build_zip(with_guides=not args.sem_guias)
     except BuildError as exc:
         print(f"ERRO: {exc}", file=sys.stderr)
         return 1

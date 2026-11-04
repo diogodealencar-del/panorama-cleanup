@@ -5,7 +5,7 @@ description: Ferramenta determinística incluída (execute-a; nunca analise o XM
 
 <!-- Gerado por scripts/build_skill.py a partir de skill/. Não edite este arquivo: edite skill/ e rode o build. -->
 
-# Saneamento de objetos do Panorama (panorama-cleanup 0.2.4)
+# Saneamento de objetos do Panorama (panorama-cleanup 0.2.5)
 
 Conduz a ferramenta `panorama-cleanup` sobre um backup XML do Panorama, etapa por etapa, com aprovação explícita entre etapas. Prioridade absoluta: o comportamento das políticas de cada firewall não pode mudar. O valor efetivo de cada objeto, resolvido pela herança Shared > DG ancestral > DG, deve ser idêntico antes e depois.
 
@@ -17,7 +17,7 @@ Conduz a ferramenta `panorama-cleanup` sobre um backup XML do Panorama, etapa po
 4. **Uma etapa por vez.** Ao fim de cada etapa: apresente resultados, limitações e o que revisar, e **pare**. Não inicie a etapa seguinte sem aprovação explícita. Nenhum modo encadeia o próximo.
 5. **UNKNOWN nunca é removido.** Objeto só é excluído com ausência de uso comprovada. Mesmo nome com valor diferente vira `NOME_DG` em Shared, nunca um objeto só.
 6. **Não inventar sintaxe.** Comandos só da versão identificada no backup, conferidos contra o guia oficial dessa versão. Se faltar evidência, interrompa a operação e documente a limitação.
-7. **Qualquer inconsistência = NÃO APROVADO.** Não contorne verificações nem relativize falhas de integridade.
+7. **Qualquer inconsistência = NÃO APROVADO.** Não contorne verificações nem relativize falhas de integridade. Ao revisar uma etapa, procure em **todos** os CSVs do run, não só no `integrity-checks.csv`, por `FALHA`, `ERRO`, `NÃO APLICADO` ou `NÃO`. Qualquer ocorrência bloqueia a etapa até ser explicada pela ferramenta.
 8. **Diferencie** ação solicitada, executada e validada. Declare o que não foi verificado.
 9. **Toda análise sai da ferramenta.** Não classifique objetos, não resolva herança, não conte objetos e não afirme equivalência lendo o XML por conta própria (nem com scripts improvisados). Todo número apresentado ao usuário cita o relatório da ferramenta de onde veio (arquivo e run). Se a ferramenta não rodar, pare e diga por quê.
 10. **Escopo: objetos.** Não faça auditoria geral de segurança (interfaces, VPN, autenticação, ordem de regras, perfis). Se, ao ler um relatório da ferramenta, algo fora do escopo parecer grave, mencione em uma linha como "fora do escopo, verificar" e siga a etapa.
@@ -76,8 +76,8 @@ SESSAO
 | 2 Inventário | `PC inventory --input "$B"` | Versão do PAN-OS; hierarquia de DGs (pai `UNKNOWN` = alerta); reconciliação toda `yes`; contêineres não reconhecidos |
 | 3 Análise | `PC analyze --input "$B" --inventory "$(ultimo inventory)"` | `unresolved-references.csv` (todo "verificar" exige análise manual); UNKNOWN e motivos; `context-dependent-objects.csv` |
 | 4 Plano | `PC plan --input "$B" --analysis "$(ultimo analyze)"` | `plan-verification.csv` com **0 diferenças**; nomes `NOME_DG`; descrições perdidas (`notes` em `deleted-objects.csv`); `kept-local-objects.csv`; exclusões da fase 4 |
-| 5 Conversão | `PC apply --input "$B" --plan "$(ultimo plan)"` | `integrity-checks.csv` todo OK; `policy-comparison.csv` |
-| 6 Não utilizados | `PC apply --stage cleanup --keep-type tag --input "$B" --plan "$(ultimo plan)" --from-run "$(ultimo apply)"` | Integridade 14/14 OK; `unused-review.csv`; tags mantidas |
+| 5 Conversão | `PC apply --input "$B" --plan "$(ultimo plan)"` | `integrity-checks.csv` todo OK (inclui "todas as atualizações de referência do plano aplicadas" e "grupos remanescentes"); leia `reference-updates.csv` inteiro: nenhuma linha "NÃO APLICADO"; `policy-comparison.csv` |
+| 6 Não utilizados | `PC apply --stage cleanup --keep-type tag --input "$B" --plan "$(ultimo plan)" --from-run "$(ultimo apply)"` | `integrity-checks.csv` todo OK; `unused-review.csv`; tags mantidas |
 | 7 Comandos | `PC plan --stage commands --input "$B" --plan "$(ultimo plan)" --convert-run "$(ultimo apply)" --cleanup-run "$(ultimo apply-cleanup)"` | `generation-checks.csv` todo OK; se "CLI validada para PAN-OS X.Y" estiver PENDENTE, implantar só pela XML API |
 | 8 Validação | `PC validate --input "$B" --modified "$(ls "$W"/output/xml/$(basename "$(ultimo apply-cleanup)")/*.final.xml)" --plan "$(ultimo plan)" --convert-run "$(ultimo apply)" --cleanup-run "$(ultimo apply-cleanup)"` | `validation-report.html` = **APROVADO** (exit 0). NÃO APROVADO: pare |
 | 9 Homologação | Laboratório com `run-xmlapi.sh` (um `.tsv` por vez, na ordem 10→20→30→40); depois `PC validate --exported --input "$B" --modified <candidate-exportado>.xml --plan … --convert-run … --cleanup-run …`; ensaio de rollback | Preencher o modelo `docs/modelo-etapa-09.md` do clone (copie para `$W/`) com os runs, sha256, DGs e seriais |

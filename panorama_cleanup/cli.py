@@ -386,6 +386,20 @@ def load_approved_plan(plan_dir: Path, ctx, an) -> tuple:
     return manifest["run_id"], operations, copies
 
 
+def _planned_references_check(plan_dir, result):
+    """Toda atualização de referência listada no plano foi aplicada (antes, só a Etapa 8 via)."""
+    import csv
+
+    from panorama_cleanup.report_generator import reference_applied
+    from panorama_cleanup.xml_validator import Check
+    with open(Path(plan_dir) / "reference-updates.csv", encoding="utf-8", newline="") as fh:
+        planned = list(csv.DictReader(fh))
+    missing = [f"{r['scope']}:{r['source_name']} {r['field']} {r['old']}->{r['new']}"
+               for r in planned if not reference_applied(r, result)]
+    return Check("todas as atualizações de referência do plano aplicadas", not missing,
+                 f"{len(planned)} planejadas; não aplicadas: {len(missing)} {missing[:5]}")
+
+
 def run_apply(input_path: Path, plan_dir: Path, settings: Settings) -> int:
     """APPLY: fases 1-3 do plano aprovado em uma cópia; o original não é tocado."""
     from panorama_cleanup.safety import ensure_writable_target
@@ -414,6 +428,7 @@ def run_apply(input_path: Path, plan_dir: Path, settings: Settings) -> int:
         # Valida o arquivo gravado, relido do disco.
         reread = parse_backup(xml_path)
         checks, policy_rows, _ = validate_transformation(original, reread, result, operations)
+        checks.append(_planned_references_check(plan_dir, result))
         verify_unchanged(ctx.input_path, ctx.input_sha256)
         for c in checks:
             (log.info if c.passed else log.error)("%s %s: %s", "OK" if c.passed else "FALHA",

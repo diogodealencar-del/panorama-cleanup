@@ -95,7 +95,8 @@ def test_fixture_decisions(deps):
 
 def test_fixture_is_transparent_in_every_phase(deps):
     _, plan = deps
-    assert [v[0] for v in plan.verification] == [1, 2, 3, 4]
+    assert [(v[0], v[1]) for v in plan.verification] == [
+        (p, what) for p in (1, 2, 3, 4) for what in ("referências de regra", "grupos remanescentes")]
     assert all(v[3] == 0 for v in plan.verification)
 
 

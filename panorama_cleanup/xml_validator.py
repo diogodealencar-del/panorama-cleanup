@@ -24,6 +24,22 @@ class Check:
     detail: str
 
 
+def _remaining_group_diffs(an_before, an_after, before, after) -> tuple:
+    """Grupos presentes antes e depois (mesmo xpath): valor efetivo por firewall."""
+    from panorama_cleanup.effective_model import compare_objects
+    after_index = {r.xpath: i for i, r in enumerate(an_after.inventory.records)}
+    after_by_key = {o.key: o for o in after.objects}
+    pairs = []
+    for o in before.objects:
+        xpath = an_before.inventory.records[o.key].xpath
+        if o.leaf is None and xpath in after_index:
+            pairs.append((o, after_by_key[after_index[xpath]]))
+    diffs = compare_objects(before, after, pairs)
+    checked = sum(len(before.firewall_contexts(o.scope)) for o, _ in pairs)
+    sample = [f"{o.scope}:{o.name} em {ctx}" for ctx, o, *_ in diffs[:5]]
+    return diffs, f"{checked} verificações (grupo × DG); {len(diffs)} diferenças {sample}"
+
+
 def validate_transformation(original, transformed, result, operations, phases=(1, 2, 3)) -> tuple:
     """Retorna (checks, linhas de comparação de políticas)."""
     from panorama_cleanup.shared_converter import replace_reference
@@ -100,6 +116,9 @@ def validate_transformation(original, transformed, result, operations, phases=(1
     checked = sum(len(before.firewall_contexts(r.source_scope)) for r in refs)
     add("valor efetivo idêntico em todos os firewalls", not diffs,
         f"{checked} verificações (referência de regra × DG); {len(diffs)} diferenças")
+    group_diffs, detail = _remaining_group_diffs(an_before, an_after, before, after)
+    add("valor efetivo dos grupos remanescentes idêntico em todos os firewalls (inclui sem uso)",
+        not group_diffs, detail)
 
     refs_after = {(r.source_xpath, r.field, r.value) for r in rule_refs_from_graph(an_after.graph)}
     mapped = {(r.source_xpath, r.field, result.rule_renames.get((r.source_xpath, r.field, r.value), r.value))
@@ -154,6 +173,9 @@ def validate_end_to_end(original, final, rule_renames: dict, deleted_xpaths: lis
     add("ponta a ponta: valor efetivo idêntico em todos os firewalls", not diffs,
         f"{sum(len(before.firewall_contexts(r.source_scope)) for r in refs)} verificações; "
         f"{len(diffs)} diferenças")
+    group_diffs, detail = _remaining_group_diffs(an_before, an_after, before, after)
+    add("ponta a ponta: valor efetivo dos grupos remanescentes idêntico (inclui sem uso)",
+        not group_diffs, detail)
 
     status = {r.xpath: an_before.usage[i].status for i, r in enumerate(an_before.inventory.records)}
     not_unused = [x for x in deleted_xpaths if status.get(x) != "UNUSED"]

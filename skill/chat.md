@@ -23,6 +23,8 @@ Não aceite backups recortados ou editados à mão (por exemplo, sem templates):
 python3 "$SKILL_DIR/scripts/run.py" --check
 ```
 
+Se a linha `guias de CLI` mostrar `nenhum`, este é o pacote público, sem os guias da Palo Alto. Avise o usuário já na Etapa 2: as Etapas 2 a 6 e 8 funcionam, mas a Etapa 7 (comandos) vai parar pedindo o guia. Para ela, é preciso um pacote gerado com o guia da versão (`python scripts/build_skill.py` num clone do repositório que tenha `docs/referencias/pan-os-X.Y/ngfw-cli.md`).
+
 `lxml` e `openpyxl` vêm do ambiente; o resto vem na skill. Se o resultado não for `AMBIENTE OK` e faltar uma dessas bibliotecas, tente uma vez `pip install --quiet lxml openpyxl` e rode `--check` de novo. Se continuar falhando, mostre a saída ao usuário e pare. Não tente fazer a análise sem a ferramenta.
 
 ## Novo backup

@@ -597,8 +597,17 @@ def operation_rows(an, plan) -> list:
     return rows
 
 
+def reference_applied(row: dict, result) -> bool:
+    """Uma linha de reference-updates.csv do plano foi aplicada pela conversão?"""
+    if row["applies_to"] == "cópia criada em Shared":
+        return any(old == row["old"] for _, old, _ in result.copy_member_renames.get(row["source_xpath"], ()))
+    if row["kind"] == "regra":
+        return (row["source_xpath"], row["field"], row["old"]) in result.rule_renames
+    return any(x[0] == row["source_xpath"] and x[2] == row["old"] for x in result.object_renames)
+
+
 def reference_update_rows(an, plan) -> list:
-    from panorama_cleanup.planner import KEEP_LOCAL, PENDING
+    from panorama_cleanup.planner import LOCAL_UPDATE_ACTIONS
     inv, rows = an.inventory, []
     for u in sorted(plan.rule_updates, key=lambda u: (u["source_scope"], u["source_name"], u["field"])):
         rows.append({"status": "planejado", "kind": "regra", "scope": u["source_scope"],
@@ -608,7 +617,7 @@ def reference_update_rows(an, plan) -> list:
                      "source_xpath": u["source_xpath"]})
     for u in plan.object_updates:
         src = inv.records[u["source"]]
-        local = plan.decisions[u["source"]].action in (KEEP_LOCAL, PENDING)
+        local = plan.decisions[u["source"]].action in LOCAL_UPDATE_ACTIONS
         rows.append({"status": "planejado", "kind": "objeto", "scope": src.scope,
                      "source_type": src.object_type, "source_name": src.name,
                      "rule_disabled": "", "field": u["field"], "old": u["old"], "new": u["new"],
@@ -697,9 +706,9 @@ def write_plan_reports(an, plan, ctx: RunContext, settings: Settings, analysis_r
         "deleted-objects.csv": (DELETED_COLUMNS, deleted_rows(an, plan)),
         "kept-local-objects.csv": (PLAN_OBJECT_COLUMNS,
                                    [r for r in objects if r["action"] in ("KEEP_LOCAL", "PENDING_DECISION")]),
-        "plan-verification.csv": (("phase", "phase_name", "checks", "differences"), [
-            {"phase": p, "phase_name": dict(PHASES)[p], "checks": c, "differences": n}
-            for p, _, c, n in plan.verification]),
+        "plan-verification.csv": (("phase", "phase_name", "scope", "checks", "differences"), [
+            {"phase": p, "phase_name": dict(PHASES)[p], "scope": what, "checks": c, "differences": n}
+            for p, what, c, n in plan.verification]),
         "plan-demotions.csv": (("scope", "object_type", "name", "previous_action", "reason"), [
             {"scope": an.inventory.records[k].scope, "object_type": an.inventory.records[k].object_type,
              "name": an.inventory.records[k].name, "previous_action": a, "reason": why}
@@ -766,11 +775,13 @@ def render_plan_html(an, plan, ctx, summary, analysis_run, sets) -> str:
     parts.append("<h2>Verificação de transparência</h2>")
     diffs = summary["verification_differences"]
     parts.append(f"<p class='{'ok' if diffs == 0 else 'bad'}'>{diffs} diferença(s) de valor efetivo "
-                 f"em {summary['verification_checks']} verificações (referência de regra × firewall × fase).</p>")
-    parts.append("<div class='table-wrap'><table><tr><th>Fase</th><th class='n'>Verificações</th>"
-                 "<th class='n'>Diferenças</th></tr>")
-    for p, _, c, n in plan.verification:
-        parts.append(f"<tr><td>{p}. {e(dict(PHASES)[p])}</td><td class='n'>{c}</td><td class='n'>{n}</td></tr>")
+                 f"em {summary['verification_checks']} verificações (referências de regra e grupos "
+                 f"remanescentes, inclusive sem uso, × firewall × fase).</p>")
+    parts.append("<div class='table-wrap'><table><tr><th>Fase</th><th>Verificado</th>"
+                 "<th class='n'>Verificações</th><th class='n'>Diferenças</th></tr>")
+    for p, what, c, n in plan.verification:
+        parts.append(f"<tr><td>{p}. {e(dict(PHASES)[p])}</td><td>{e(what)}</td><td class='n'>{c}</td>"
+                     f"<td class='n'>{n}</td></tr>")
     parts.append("</table></div>")
 
     by_scope = Counter((r["scope"], r["action"]) for r in objects if r["scope"] != "shared")
@@ -838,15 +849,8 @@ def write_apply_reports(an, result, checks, policy_rows, ctx, settings, plan_run
     deleted = set(result.deleted_xpaths)
     renamed = [dict(r, status="aplicado" if r["xpath"] in created else "NÃO APLICADO")
                for r in plan_rows("renamed-objects.csv")]
-    refs = []
-    for r in plan_rows("reference-updates.csv"):
-        if r["applies_to"] == "cópia criada em Shared":
-            ok = r["source_xpath"] in result.copy_member_renames
-        elif r["kind"] == "regra":
-            ok = (r["source_xpath"], r["field"], r["old"]) in result.rule_renames
-        else:
-            ok = any(x[0] == r["source_xpath"] and x[2] == r["old"] for x in result.object_renames)
-        refs.append(dict(r, status="aplicado" if ok else "NÃO APLICADO"))
+    refs = [dict(r, status="aplicado" if reference_applied(r, result) else "NÃO APLICADO")
+            for r in plan_rows("reference-updates.csv")]
     removed = [dict(r, status="aplicado" if r["xpath"] in deleted else "NÃO APLICADO")
                for r in plan_rows("deleted-objects.csv") if r["phase"] == "3"]
     created_rows = [{"source_xpath": src, "shared_xpath": dst} for dst, src in result.created_xpaths]

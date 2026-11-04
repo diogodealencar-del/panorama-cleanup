@@ -1,6 +1,6 @@
 {
   "name": "panorama-cleanup",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Inventário, análise de dependências e saneamento de objetos de backups XML do Panorama Palo Alto, com centralização em Shared e validação de equivalência.",
   "author": {
     "name": "Diogo de Alencar"

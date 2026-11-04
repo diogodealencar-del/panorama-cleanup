@@ -207,7 +207,7 @@ python -m panorama_cleanup apply --stage cleanup --keep-type tag \
 - **Relatórios:**
   - `unused-review.csv`: todos os candidatos, com a prova de cada um;
   - `deleted-objects.csv` e `kept-unused-objects.csv`;
-  - `integrity-checks.csv`: precisa ter 14/14 **OK**.
+  - `integrity-checks.csv`: todas as verificações **OK**.
 
 ### Etapa 7 — Comandos para o Panorama
 
@@ -392,7 +392,7 @@ Ao terminar um backup, arquive os diretórios usados num local controlado e remo
 - [ ] Etapa 3 aprovada (não resolvidos explicados, UNKNOWN revisados)
 - [ ] Etapa 4 aprovada (0 diferenças, nomes, descrições, mantidos, exclusões)
 - [ ] Etapa 5: integridade toda OK
-- [ ] Etapa 6: integridade 14/14 OK, tags mantidas
+- [ ] Etapa 6: integridade toda OK, tags mantidas
 - [ ] Etapa 7: verificações OK; interface definida (XML API)
 - [ ] Etapa 8: **APROVADO**
 - [ ] Etapa 9: laboratório, ensaio de rollback, critérios de autorização atendidos
