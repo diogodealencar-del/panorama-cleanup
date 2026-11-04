@@ -112,3 +112,7 @@ docs/               arquitetura e andamento das etapas
 python -m panorama_cleanup validate --input input/<backup>.xml --modified output/xml/<run cleanup>/<backup>.final.xml \
   --plan <run plan> --convert-run <run apply> --cleanup-run <run cleanup>
 ```
+
+## Licença
+
+[MIT](LICENSE). O software é fornecido sem garantia: toda alteração gerada deve passar pela validação, pela homologação em laboratório e pela aprovação descritas neste projeto antes de chegar à produção. Os guias oficiais da Palo Alto Networks (`docs/referencias/`) não fazem parte do repositório nem desta licença.
