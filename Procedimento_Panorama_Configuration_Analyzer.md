@@ -12,6 +12,20 @@ gerar comandos de implantação e validar a integridade da configuração.
 Nenhuma transformação poderá ser considerada segura sem análise de
 dependências, rastreabilidade e validação comparativa.
 
+> **Sobre este documento.** Este é o procedimento usado para **construir**
+> a ferramenta com o Claude Code, etapa por etapa. A ferramenta já está
+> implementada (versão 0.2.2) e foi validada com commit e push em Panorama
+> PAN-OS 11.1. Para **usar** a ferramenta, não é preciso recriar o projeto:
+>
+> - instalação e atualização: [`README.md`](README.md);
+> - uso etapa por etapa: [`docs/procedimento-uso-da-ferramenta.md`](docs/procedimento-uso-da-ferramenta.md);
+> - homologação, implantação e rollback: [`docs/modelo-etapa-09.md`](docs/modelo-etapa-09.md);
+> - regras permanentes: [`CLAUDE.md`](CLAUDE.md).
+>
+> Os prompts da seção 7 estão preservados como foram usados. Onde a
+> implementação divergiu do planejado, há uma nota **Como ficou** e a
+> correspondência completa está na seção 8.
+
 ------------------------------------------------------------------------
 
 # 1. Escopo e regras fundamentais
@@ -66,13 +80,16 @@ A análise deverá incluir referências diretas e indiretas, grupos,
 rulebases, templates, interfaces, configurações de rede, VPNs e demais
 estruturas relevantes.
 
-Classificações:
+Classificações, em duas dimensões:
 
--   `USED`: utilizado.
--   `UNUSED`: comprovadamente não utilizado.
--   `UNKNOWN`: uso não determinado ou referência não interpretada.
--   `DUPLICATE`: possível duplicidade identificada.
--   `CONFLICT`: mesmo nome com valores diferentes.
+| Dimensão | Valor | Significado |
+|---|---|---|
+| Uso | `USED` | Referência direta ou indireta comprovada |
+| Uso | `UNUSED` | Comprovadamente não utilizado |
+| Uso | `UNKNOWN` | Uso não determinado, referência apenas possível ou tipo não reconhecido |
+| Nome | `DUPLICATE` | Mesmo nome e mesmo valor em mais de um escopo (caso A) |
+| Nome | `CONFLICT` | Mesmo nome e valores diferentes (caso B) |
+| Valor | `POSSIBLE_DUPLICATE` | Nomes diferentes e mesmo valor (caso C); nunca consolidado automaticamente |
 
 Objetos `UNKNOWN` nunca poderão ser excluídos automaticamente.
 
@@ -148,9 +165,29 @@ Verificar limites de tamanho, caracteres permitidos, nomes já
 existentes, objetos herdados e colisões. O nome gerado deverá ser
 determinístico. Não truncar nomes sem verificar colisões.
 
+## 1.5 Decisões adotadas na implementação
+
+Estas decisões surgiram durante a construção e a homologação. Valem como
+padrão; mudar qualquer uma exige aprovação explícita.
+
+| Tema | Decisão |
+|---|---|
+| Transparência | O valor efetivo de cada objeto, resolvido pela herança Shared > DG ancestral > DG, deve ser idêntico antes e depois para cada firewall. Comprovado por simulação no plano e revalidado nas Etapas 5, 6 e 8 |
+| Tags | Nenhuma tag é criada, movida, alterada ou excluída (`--keep-type tag` na Etapa 6) |
+| Objetos de DG que sobrepõem Shared e são usados por definições de Shared | Ficam no DG (KEEP_LOCAL), com motivo documentado |
+| Descrições em consolidação | Vale a do objeto mantido em Shared; as descrições locais perdidas são listadas para aceite |
+| Implantação | Panorama XML API (`set`, `edit`, `delete`). A CLI só é usada se a sintaxe estiver confirmada para a versão. O XML final **não** é importado inteiro: a seção `readonly` não é ajustada pela ferramenta |
+| Precedência | Se o Panorama estiver com "Objects defined in ancestors will take higher precedence", a análise para: a ferramenta assume o padrão, em que o descendente prevalece |
+| Multi-vsys | A ferramenta modela por Device Group. Quando um firewall aparece em mais de um DG, o inventário avisa com o vsys de cada associação, e a homologação faz os testes de política por vsys |
+| Commit e push | Nunca automáticos; apenas documentados |
+| Isolamento | Uma pasta de trabalho por cliente/Panorama (`--workdir`) |
+
 ------------------------------------------------------------------------
 
 # 2. Criar o projeto no macOS
+
+> Para usar a ferramenta pronta, clone o repositório em vez de recriá-lo
+> (ver `README.md`). As seções 2 a 6 descrevem a criação original.
 
 Abrir o Terminal e executar:
 
@@ -225,7 +262,7 @@ touch README.md requirements.txt
 
 Conteúdo inicial de `README.md`:
 
-``` markdown
+~~~markdown
 # Panorama Configuration Analyzer & Object Cleanup
 
 Ferramenta para análise, auditoria e saneamento de configurações XML do Palo Alto Networks Panorama.
@@ -266,16 +303,17 @@ Nenhuma alteração deverá ser aplicada em produção sem aprovação.
 Nenhum commit ou push deverá ser executado automaticamente.
 
 Consultar CLAUDE.md para as instruções permanentes.
+~~~
 
+Conteúdo inicial de `requirements.txt`:
 
-    Conteúdo inicial de `requirements.txt`:
-
-    ```text
-    lxml>=5.0
-    pandas>=2.0
-    openpyxl>=3.1
-    pytest>=8.0
-    defusedxml>=0.7
+```text
+lxml>=5.0
+pandas>=2.0
+openpyxl>=3.1
+pytest>=8.0
+defusedxml>=0.7
+```
 
 As dependências deverão ser revistas pelo Claude durante a Etapa 1. Não
 instalar bibliotecas sem necessidade técnica justificada.
@@ -365,6 +403,11 @@ etapa, revisar os resultados e aprovar explicitamente antes de avançar.
 
 Não enviar todos os prompts de uma só vez.
 
+> Estes são os prompts usados para **construir** cada módulo. Para
+> **executar** a ferramenta já pronta sobre um backup, use os comandos de
+> [`docs/procedimento-uso-da-ferramenta.md`](docs/procedimento-uso-da-ferramenta.md)
+> ou a skill `panorama-cleanup` (Claude Code ou claude.ai).
+
 ## Etapa 1: estruturação do projeto
 
 **Objetivo:** preparar diretórios, ambiente, documentação, módulos e
@@ -421,6 +464,12 @@ Apresente os resultados, limitações e testes. Aguarde aprovação para a Etapa
 **Aprovação:** inventário consistente com a estrutura XML, quantidades
 conferidas e limitações documentadas.
 
+**Como ficou:** `panorama-cleanup inventory`. Relatórios `inventory.csv`,
+`inventory.xlsx`, `inventory.html`, `device-groups.csv`,
+`inventory-summary.csv` (reconciliação de contagem) e
+`inventory-warnings.csv` (contêineres não reconhecidos, hierarquia
+desconhecida, firewalls em mais de um DG).
+
 ## Etapa 3: análise de dependências e utilização
 
 **Objetivo:** identificar objetos usados, não usados, duplicados e
@@ -460,6 +509,13 @@ Apresente os resultados e aguarde aprovação para a Etapa 4.
 
 **Aprovação:** rastreabilidade das referências demonstrada; objetos
 desconhecidos e ambiguidades identificados.
+
+**Como ficou:** `panorama-cleanup analyze`. Além dos relatórios pedidos,
+gera `object-classification.csv`, `unknown-objects.csv`,
+`possible-duplicates.csv`, `context-dependent-objects.csv` (grupos de
+Shared cujo valor muda conforme o DG, o caso de maior risco) e
+`unresolved-references.csv`. O consolidado fica em `analysis.xlsx` e
+`analysis.html`.
 
 ## Etapa 4: planejamento das alterações
 
@@ -506,6 +562,13 @@ Aguarde minha aprovação explícita do plano antes de iniciar a Etapa 5.
 **Aprovação:** revisar individualmente as operações de renomeação,
 consolidação, atualização de referências e exclusão.
 
+**Como ficou:** `panorama-cleanup plan`. Os arquivos são
+`plan-operations.csv` (operações em 4 fases, na ordem de execução),
+`renamed-objects.csv`, `reference-updates.csv`, `deleted-objects.csv`,
+`kept-local-objects.csv`, `plan-verification.csv` (simulação de
+transparência: precisa ter **0 diferenças**), `plan.xlsx`, `plan.html` e
+`plan.json` (plano aprovado, usado pelas etapas seguintes).
+
 ## Etapa 5: conversão dos objetos para Shared
 
 **Objetivo:** implementar somente as operações aprovadas no plano.
@@ -539,6 +602,11 @@ Não inicie a Etapa 6 automaticamente.
 
 **Aprovação:** objetos elegíveis centralizados e referências
 comprovadamente preservadas.
+
+**Como ficou:** `panorama-cleanup apply` aplica as fases 1 a 3 e recalcula
+o plano, exigindo que seja idêntico ao aprovado. XML em
+`output/xml/<run>/<backup>.shared.xml`; verificações em
+`integrity-checks.csv`.
 
 ## Etapa 6: remoção de objetos não utilizados
 
@@ -574,6 +642,11 @@ Execute testes de integridade e aguarde aprovação para a Etapa 7.
 
 **Aprovação:** cada exclusão justificada e ausência de referências
 quebradas comprovada.
+
+**Como ficou:** `panorama-cleanup apply --stage cleanup --keep-type tag`
+aplica a fase 4 sobre o XML convertido. XML final em
+`output/xml/<run>/<backup>.final.xml`; prova de cada candidato em
+`unused-review.csv`.
 
 ## Etapa 7: geração dos comandos CLI
 
@@ -616,6 +689,16 @@ Aguarde aprovação para a Etapa 8.
 
 **Aprovação:** sintaxe, contexto, sequência e efeitos dos comandos
 revisados para a versão identificada.
+
+**Como ficou:** `panorama-cleanup plan --stage commands`. A forma
+recomendada é a **XML API**: um `.tsv` por fase (`10-…` a `40-…`),
+executado pelo `run-xmlapi.sh`, que para no primeiro erro e não faz
+commit. Os `.cli` equivalentes só são usados se `cli-syntax-check.csv`
+confirmar a sintaxe na versão. A conferência usa o PAN-OS CLI Quick Start
+da versão do backup; sem ele, a etapa para de propósito. Arquivos:
+`00-LEIA-ME.md`, `01-precheck.md`, `02-backup.cli`, `50-validacao.md`,
+`60-commit-e-push.md`, `70-alternativa-load-config-partial.md`,
+`80-testes-de-politica.cli` e `commands-index.csv`.
 
 ## Etapa 8: validação e comparação
 
@@ -661,6 +744,13 @@ Não avance automaticamente.
 **Aprovação:** nenhuma alteração inesperada; todas as referências
 resolvidas; políticas semanticamente preservadas.
 
+**Como ficou:** `panorama-cleanup validate` gera `validation-report.html`
+com **APROVADO** ou **NÃO APROVADO** (código de saída 0 ou 1), mais
+`policy-comparison.csv`, `policy-field-changes.csv`,
+`object-comparison.csv`, `reference-validation.csv`, `tag-validation.csv`
+e `remaining-dg-objects.csv`. Com `--exported`, valida um candidate ou
+running exportado do Panorama após a implantação.
+
 ## Etapa 9: homologação e rollback
 
 **Objetivo:** preparar a implantação controlada, sem executar alterações
@@ -696,65 +786,72 @@ Não execute commit ou push.
 Apresente o checklist final e aguarde aprovação.
 ```
 
+> **Correção importante.** O item 3 do prompt ("importação controlada do
+> XML") não se confirmou como caminho seguro. A ferramenta não ajusta a
+> seção `readonly` (IDs internos mantidos pelo Panorama), então o XML final
+> **não deve ser importado inteiro** em produção. A implantação validada é
+> pela XML API, com os `.tsv` da Etapa 7. A importação do backup **original**
+> continua válida para montar o laboratório.
+
+**Como ficou:** o procedimento está no modelo
+[`docs/modelo-etapa-09.md`](docs/modelo-etapa-09.md): laboratório
+(aplicar os `.tsv`, Validate Changes, `validate --exported` sobre o
+candidate e ensaio de rollback), produção com pré-verificação, backup,
+commit só no Panorama e push gradual por DG com testes de política, e
+rollback em quatro níveis. Copie o modelo para a pasta de trabalho do
+cliente e preencha.
+
 ------------------------------------------------------------------------
 
-# 8. Estrutura final esperada
+# 8. Estrutura final
 
-Ao concluir o desenvolvimento, a estrutura deverá se aproximar de:
+O planejado (sugestão do `CLAUDE.md`) e o implementado:
+
+| Planejado | Implementado |
+|---|---|
+| `scripts/inventory.py` e demais módulos | Pacote `panorama_cleanup/` (um módulo por responsabilidade) e comando `panorama-cleanup` |
+| `input/panorama-backup.xml` | `<workdir>/input/` ou qualquer caminho em `--input`; o original nunca é alterado |
+| `output/reports/*.csv` | `<workdir>/output/reports/<run_id>/`, uma pasta por execução, com `manifest.json` |
+| `output/panorama-shared-converted.xml` | `<workdir>/output/xml/<run apply>/<backup>.shared.xml` |
+| `output/panorama-cleaned.xml` | `<workdir>/output/xml/<run apply-cleanup>/<backup>.final.xml` |
+| `cli/01-backup.txt` … `08-commit.txt` | `<workdir>/cli/<run plan-commands>/`: `00-LEIA-ME.md`, `02-backup.cli`, `10-…` a `40-….tsv`/`.cli`, `run-xmlapi.sh`, `50-…`, `60-…`, `70-…`, `80-…` |
+| `docs/deployment-procedure.md`, `rollback-procedure.md`, `operational-checklist.md` | `docs/modelo-etapa-09.md` (um único modelo, preenchido por cliente) |
+| `final-validation-report.html` | `validation-report.html` |
+
+O `run_id` tem o formato `AAAAMMDDTHHMMSSZ-<modo>-<8 primeiros hex do sha256 do backup>`,
+o que liga cada relatório ao arquivo original.
+
+Repositório:
 
 ``` text
 panorama-cleanup/
-├── CLAUDE.md
-├── README.md
-├── requirements.txt
-├── config/
-├── input/
-│   └── panorama-backup.xml
-├── output/
-│   ├── panorama-shared-converted.xml
-│   ├── panorama-cleaned.xml
-│   └── reports/
-│       ├── inventory.csv
-│       ├── inventory.xlsx
-│       ├── used-objects.csv
-│       ├── unused-objects.csv
-│       ├── duplicate-objects.csv
-│       ├── conflicting-objects.csv
-│       ├── dependencies.csv
-│       ├── renamed-objects.csv
-│       ├── deleted-objects.csv
-│       ├── reference-updates.csv
-│       ├── policy-comparison.csv
-│       └── final-validation-report.html
-├── scripts/
-│   ├── inventory.py
-│   ├── dependency_analyzer.py
-│   ├── duplicate_analyzer.py
-│   ├── unused_objects.py
-│   ├── shared_converter.py
-│   ├── policy_comparator.py
-│   ├── xml_validator.py
-│   └── generate_cli.py
-├── cli/
-│   ├── 01-backup.txt
-│   ├── 02-create-shared.txt
-│   ├── 03-resolve-conflicts.txt
-│   ├── 04-update-references.txt
-│   ├── 05-delete-local-objects.txt
-│   ├── 06-delete-unused-objects.txt
-│   ├── 07-validation.txt
-│   └── 08-commit.txt
-├── tests/
-├── logs/
-├── rollback/
-└── docs/
-    ├── deployment-procedure.md
-    ├── rollback-procedure.md
-    └── operational-checklist.md
+├── CLAUDE.md                     regras permanentes
+├── README.md                     instalação, uso e atualização
+├── pyproject.toml                pacote e comando panorama-cleanup
+├── panorama_cleanup/             código-fonte
+├── tests/                        testes automatizados e fixtures XML sintéticas
+├── config/settings.json          caminhos padrão
+├── docs/
+│   ├── arquitetura.md
+│   ├── procedimento-uso-da-ferramenta.md
+│   ├── modelo-etapa-09.md
+│   └── referencias/              guias oficiais por versão (fora do git)
+├── skill/                        fonte única das skills (plugin e claude.ai)
+├── claude-plugin/                plugin do Claude Code (gerado de skill/)
+├── .claude-plugin/               marketplace panorama-tools
+└── scripts/                      check_env.py, build_skill.py
 ```
 
-A estrutura poderá ser ajustada durante o desenvolvimento, desde que as
-responsabilidades continuem separadas.
+Por cliente (`--workdir`), fora do repositório:
+
+``` text
+<workdir>/
+├── input/      backup original
+├── output/     reports/<run_id>/ e xml/<run_id>/
+├── cli/        comandos por run
+├── rollback/
+└── logs/       um log por execução
+```
 
 ------------------------------------------------------------------------
 
@@ -810,404 +907,37 @@ firewalls antes da aprovação formal.
 
 # Anexo A: CLAUDE.md
 
-O conteúdo a seguir deverá ser salvo integralmente no arquivo
-`CLAUDE.md` na raiz do projeto.
-
-``` markdown
-# CLAUDE.md
-# PANORAMA CONFIGURATION ANALYZER & OBJECT CLEANUP
-
-## 1. IDENTIDADE DO PROJETO
-
-Este projeto tem como finalidade desenvolver uma ferramenta de análise, auditoria e saneamento de arquivos XML de configuração do Palo Alto Networks Panorama.
-
-Atue como engenheiro sênior especializado em Palo Alto Networks, Panorama, PAN-OS, XML de configuração, Python 3, Panorama XML API, PAN-OS CLI, Device Groups, Shared Objects, análise de dependências e automação de configurações.
-
-O objetivo é analisar backups XML, inventariar objetos, identificar objetos utilizados e não utilizados, resolver conflitos de nomenclatura, centralizar objetos elegíveis em Shared e gerar os comandos necessários para executar as alterações no Panorama.
-
-A prioridade absoluta é preservar a integridade das configurações e das políticas dos firewalls.
-
-## 2. PRINCÍPIOS FUNDAMENTAIS
-
-1. Segurança antes de velocidade.
-2. Análise antes de alteração.
-3. Inventário antes de limpeza.
-4. Dependências antes de exclusão.
-5. Planejamento antes de execução.
-6. Validação antes de aprovação.
-7. Rastreabilidade de todas as alterações.
-8. Preservação integral do XML original.
-9. Nenhuma alteração não documentada.
-10. Nenhuma operação destrutiva sem aprovação.
-
-Nunca assumir que uma configuração está correta apenas porque o XML é sintaticamente válido.
-
-## 3. REGRAS DE PRESERVAÇÃO DAS POLÍTICAS
-
-As seguintes configurações são protegidas:
-
-- Security Policies.
-- NAT Policies.
-- Decryption Policies.
-- Policy Based Forwarding.
-- QoS Policies.
-- Application Override.
-- Authentication Policies.
-- DoS Protection Policies.
-- Captive Portal.
-- SD-WAN Policies.
-- Outras rulebases encontradas no XML.
-
-É proibido excluir regras, criar regras novas, alterar ordem, UUIDs, ações, endereços, zonas, aplicações, serviços, parâmetros NAT, parâmetros PBF, configurações Decryption, Security Profiles, Log Settings ou qualquer parâmetro que modifique o comportamento das políticas.
-
-Única exceção: atualização estritamente necessária de referências de objetos, quando houver renomeação ou mudança de escopo.
-
-Toda atualização de referência deverá ser documentada e validada.
-
-A ferramenta deverá comparar as políticas originais e modificadas, garantindo equivalência semântica.
-
-Se não for possível comprovar a equivalência, interromper o processamento.
-
-## 4. ESCOPO DO SANEAMENTO
-
-Identificar e analisar, conforme os tipos suportados pelo Panorama:
-
-- Address Objects.
-- Address Groups.
-- Service Objects.
-- Service Groups.
-- Application Objects.
-- Application Groups.
-- Application Filters.
-- Tags.
-- Schedules.
-- Security Profiles.
-- Security Profile Groups.
-- Outros objetos existentes no backup.
-
-Considerar Shared, Device Groups, grupos ancestrais, grupos descendentes, objetos herdados e sobreposição de nomes.
-
-Todos os objetos elegíveis deverão ser centralizados em Shared.
-
-Tipos de objetos que não suportem essa operação deverão ser identificados e documentados, sem tentativa de conversão indevida.
-
-Não alterar a hierarquia dos Device Groups, associação dos firewalls, templates ou template stacks.
-
-## 5. TRATAMENTO DE OBJETOS DUPLICADOS
-
-Diferenciar três situações.
-
-### A. Mesmo nome e mesmo valor
-
-Exemplo:
-
-DG-RJ:
-SERVER = 192.168.10.10
-
-DG-BH:
-SERVER = 192.168.10.10
-
-Pode ser consolidado em um objeto Shared, desde que todas as dependências e propriedades sejam compatíveis.
-
-### B. Mesmo nome e valores diferentes
-
-Exemplo:
-
-DG-RJ:
-SERVER = 192.168.10.10
-
-DG-BH:
-SERVER = 192.168.20.10
-
-Resultado esperado:
-
-Shared:
-SERVER_DG-RJ = 192.168.10.10
-SERVER_DG-BH = 192.168.20.10
-
-Atualizar referências conforme a origem e o contexto de cada objeto.
-
-Nunca utilizar o mesmo objeto para representar valores diferentes.
-
-### C. Nomes diferentes e mesmo valor
-
-Identificar como possível duplicidade.
-
-Não consolidar automaticamente. Verificar referências, dependências e atributos.
-
-## 6. PADRÃO DE NOMENCLATURA
-
-Utilizar:
-
-NOME_ORIGINAL_DEVICEGROUP
-
-Exemplos:
-
-SERVER_DG-RJ
-SERVER_DG-BH
-DNS_DG-MATRIZ
-WEB_DG-FILIAL
-
-Verificar limites de caracteres, caracteres permitidos, colisões, nomes já existentes em Shared e objetos herdados.
-
-O nome gerado deverá ser determinístico.
-
-Não truncar nomes sem verificar possíveis colisões.
-
-## 7. ANÁLISE DE UTILIZAÇÃO E DEPENDÊNCIAS
-
-Construir um mecanismo de análise de dependências.
-
-Não utilizar apenas pesquisa textual de nomes no XML.
-
-Identificar referências diretas, indiretas, entre grupos, entre objetos, em todas as rulebases, templates, interfaces, configurações de rede, VPNs e demais estruturas relevantes.
-
-Considerar a hierarquia e a herança dos Device Groups.
-
-Classificar cada objeto como:
-
-- USED.
-- UNUSED.
-- UNKNOWN.
-- DUPLICATE.
-- CONFLICT.
-
-Um objeto somente poderá ser removido quando sua ausência de utilização estiver comprovada.
-
-Objetos UNKNOWN nunca poderão ser removidos automaticamente.
-
-Antes de excluir um objeto, verificar se ele é membro de outro objeto ou grupo.
-
-## 8. REGRAS DE MANIPULAÇÃO XML
-
-- Nunca sobrescrever o XML original.
-- Trabalhar sempre com cópias.
-- Preservar namespaces.
-- Preservar atributos desconhecidos.
-- Preservar elementos não relacionados ao saneamento.
-- Preservar a hierarquia XML.
-- Não descartar configurações não reconhecidas.
-- Implementar validação antes e depois de cada transformação.
-- Registrar todas as alterações.
-
-Utilizar bibliotecas Python apropriadas.
-
-Preferir uma abordagem que preserve a estrutura XML original e minimize alterações desnecessárias.
-
-## 9. ARQUITETURA DO SOFTWARE
-
-Separar as responsabilidades em módulos independentes:
-
-- inventory.py: inventário.
-- dependency_analyzer.py: análise de dependências.
-- duplicate_analyzer.py: duplicidades e conflitos.
-- unused_objects.py: identificação de objetos não utilizados.
-- shared_converter.py: conversão para Shared.
-- xml_validator.py: validação estrutural e semântica.
-- policy_comparator.py: comparação de políticas.
-- generate_cli.py: geração dos comandos.
-- report_generator.py: geração de relatórios.
-
-Implementar testes automatizados para cada módulo.
-
-Não concentrar toda a lógica em um único script.
-
-## 10. MODOS DE EXECUÇÃO
-
-A ferramenta deverá possuir cinco modos independentes.
-
-### INVENTORY
-
-Somente leitura. Gera inventário dos objetos.
-
-### ANALYZE
-
-Somente leitura. Analisa utilização, dependências, duplicidades e conflitos.
-
-### PLAN
-
-Somente leitura. Gera o plano de alterações e os comandos propostos.
-
-### APPLY
-
-Executa as transformações em uma cópia do XML. Nunca modifica o original.
-
-### VALIDATE
-
-Compara original e modificado. Valida estrutura, políticas, referências e objetos.
-
-Nenhum modo poderá executar automaticamente o modo seguinte.
-
-## 11. GERAÇÃO DOS COMANDOS CLI
-
-Gerar comandos completos e específicos para a versão identificada do Panorama.
-
-Os comandos deverão contemplar:
-
-1. Backup.
-2. Criação de objetos Shared.
-3. Renomeação de conflitos.
-4. Atualização de referências.
-5. Exclusão de objetos locais redundantes.
-6. Exclusão de objetos não utilizados.
-7. Validação.
-8. Commit controlado.
-
-Para cada comando, apresentar sintaxe completa, contexto de execução, finalidade, resultado esperado, método de validação e risco operacional.
-
-Não inventar comandos.
-
-Distinguir claramente PAN-OS CLI, Panorama XML API, Python e Shell.
-
-Quando uma operação não puder ser realizada de forma segura pela CLI, apresentar alternativa documentada, preferencialmente XML API ou importação controlada de configuração.
-
-Não executar commit ou push automaticamente.
-
-## 12. PRESERVAÇÃO DE ESCOPO E REFERÊNCIAS
-
-Antes de centralizar objetos, determinar como cada objeto é resolvido no respectivo Device Group.
-
-Considerar objetos Shared, locais, herdados, sobreposição de nomes, referências entre grupos e referências em diferentes rulebases.
-
-Não assumir que dois objetos de mesmo nome são equivalentes.
-
-Não atualizar referências sem identificar a origem e o contexto.
-
-Toda substituição deverá possuir evidência de equivalência.
-
-## 13. RELATÓRIOS OBRIGATÓRIOS
-
-Gerar:
-
-- inventory.csv.
-- inventory.xlsx.
-- used-objects.csv.
-- unused-objects.csv.
-- duplicate-objects.csv.
-- conflicting-objects.csv.
-- dependencies.csv.
-- renamed-objects.csv.
-- deleted-objects.csv.
-- reference-updates.csv.
-- policy-comparison.csv.
-- validation-report.html.
-
-Os relatórios deverão ser rastreáveis ao arquivo original e à execução correspondente.
-
-## 14. SEGURANÇA OPERACIONAL
-
-- Não acessar o Panorama automaticamente.
-- Não executar alterações remotas sem autorização.
-- Não executar commit automaticamente.
-- Não executar push automaticamente.
-- Não sobrescrever backups.
-- Não executar operações destrutivas sem aprovação.
-- Não considerar o XML final pronto para produção sem validação.
-- Manter logs de todas as operações.
-
-## 15. TESTES AUTOMATIZADOS
-
-Criar testes para leitura de XML, identificação de Device Groups, herança de objetos, referências diretas e indiretas, objetos duplicados, objetos conflitantes, objetos não utilizados, conversão para Shared, atualização de referências, exclusão segura e preservação das políticas.
-
-Criar arquivos XML de teste com diferentes cenários.
-
-Incluir testes negativos para referências ambíguas e objetos não reconhecidos.
-
-## 16. FONTES TÉCNICAS
-
-Priorizar documentação oficial Palo Alto Networks:
-
-https://docs.paloaltonetworks.com/panorama
-
-https://docs.paloaltonetworks.com/pan-os
-
-https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-panorama-api
-
-https://docs.paloaltonetworks.com/panorama/administration/manage-firewalls/manage-device-groups
-
-A documentação deverá corresponder à versão identificada no backup.
-
-Não presumir que comandos de uma versão funcionam em outra.
-
-## 17. PROTOCOLO DE EXECUÇÃO
-
-Executar o projeto na seguinte sequência:
-
-1. Estruturação.
-2. Leitura e inventário.
-3. Análise de dependências.
-4. Planejamento.
-5. Conversão para Shared.
-6. Remoção de objetos não utilizados.
-7. Geração de comandos CLI.
-8. Validação e comparação.
-9. Homologação e rollback.
-10. Documentação final.
-
-Cada etapa deverá ter objetivo definido, produzir entregáveis, executar testes, apresentar resultados, identificar limitações e aguardar aprovação antes da próxima etapa.
-
-Não pular etapas.
-
-Não iniciar automaticamente uma etapa seguinte.
-
-## 18. CRITÉRIO DE APROVAÇÃO
-
-O projeto somente poderá ser considerado aprovado quando:
-
-- Todos os objetos elegíveis estiverem em Shared.
-- Todos os conflitos estiverem resolvidos.
-- Nenhum objeto utilizado tiver sido excluído.
-- Nenhuma referência estiver quebrada.
-- Nenhuma política tiver sofrido alteração não autorizada.
-- Todas as diferenças estiverem documentadas.
-- Os comandos estiverem validados para a versão correspondente.
-- Os testes automatizados estiverem aprovados.
-- O rollback estiver documentado.
-
-Qualquer inconsistência deverá resultar em NÃO APROVADO.
-
-## 19. INSTRUÇÃO FINAL
-
-Trabalhe como engenheiro responsável pela integridade da configuração.
-
-Não priorize velocidade em detrimento de segurança.
-
-Não faça suposições.
-
-Não invente sintaxe.
-
-Não ignore dependências.
-
-Não modifique políticas para facilitar o processamento.
-
-Se não houver evidência suficiente para uma operação, interrompa essa operação e documente a limitação.
-
-O resultado deverá ser uma configuração Panorama íntegra, rastreável, validada e tecnicamente confiável.
-```
+O `CLAUDE.md` vigente está na raiz do repositório: [`CLAUDE.md`](CLAUDE.md).
+Para criar um projeto novo, copie esse arquivo integralmente.
+
+Este anexo trazia uma cópia condensada de uma versão anterior. Ela foi
+removida para haver uma única fonte; o histórico do git preserva o texto
+original.
 
 ------------------------------------------------------------------------
 
 # Anexo B: lembrete operacional
 
-A sequência resumida para utilização diária é:
+A sequência resumida para utilização diária, com a ferramenta pronta:
 
 ``` text
-1. Abrir o projeto no Claude Code.
-2. Conferir o CLAUDE.md.
-3. Colocar o backup original em input/.
-4. Executar INVENTORY.
-5. Conferir os relatórios.
-6. Executar ANALYZE.
-7. Conferir dependências e conflitos.
-8. Executar PLAN.
-9. Aprovar o plano.
-10. Executar APPLY.
-11. Revisar as transformações.
-12. Executar VALIDATE.
-13. Gerar e revisar os comandos CLI.
-14. Homologar em ambiente separado.
-15. Autorizar implantação somente após aprovação.
+1.  Confirmar que o contrato do cliente permite processar o backup no ambiente escolhido.
+2.  Criar a pasta de trabalho do cliente e copiar o export completo do Panorama para <workdir>/input/.
+3.  Registrar o sha256 do backup.
+4.  INVENTORY: panorama-cleanup --workdir W inventory --input B. Conferir versão, hierarquia, reconciliação e avisos.
+5.  ANALYZE: conferir não resolvidos, UNKNOWN e objetos dependentes de contexto.
+6.  PLAN: plan-verification.csv com 0 diferenças; revisar nomes, descrições, mantidos e exclusões. Aprovar.
+7.  APPLY (convert): integridade toda OK.
+8.  APPLY --stage cleanup --keep-type tag: integridade 14/14 OK.
+9.  PLAN --stage commands: generation-checks.csv OK; definir XML API como interface.
+10. VALIDATE: APROVADO.
+11. Homologar em laboratório (run-xmlapi.sh, validate --exported, ensaio de rollback).
+12. Implantar em produção somente em janela aprovada, com push gradual por DG.
+13. Arquivar runs, logs e decisões.
 ```
+
+O detalhe de cada passo está em
+[`docs/procedimento-uso-da-ferramenta.md`](docs/procedimento-uso-da-ferramenta.md).
 
 **Regra operacional final:** o Claude não deverá avançar automaticamente
 entre etapas. A aprovação humana é obrigatória antes de qualquer
