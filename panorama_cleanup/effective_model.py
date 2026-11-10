@@ -28,6 +28,14 @@ GROUP_MEMBER_TYPES = {
 }
 
 
+# Tipos que disputam o mesmo nome na resolução (família de nomes).
+NAME_TYPES = {
+    "address-group": tuple(GROUP_MEMBER_ADDRESS_TYPES),
+    "service-group": tuple(SERVICE_TYPES),
+    "application-group": tuple(APPLICATION_TYPES),
+}
+
+
 @dataclass(frozen=True)
 class ModelObject:
     key: int              # índice original em inv.records
@@ -74,6 +82,33 @@ def objects_from_inventory(inv, tag_identity: str = "name+color") -> list:
         objects.append(ModelObject(i, rec.scope, rec.name, rec.object_type, leaf, members,
                                    dynamic, rec.tags))
     return objects
+
+
+def used_contexts(graph) -> frozenset:
+    """(chave do objeto, contexto) alcançados a partir de regras e templates.
+
+    Um objeto é "usado no contexto" se alguma regra (ou template) avaliada nos
+    firewalls desse DG chega até ele, direta ou indiretamente por membros de grupos
+    resolvidos no mesmo contexto. Fora disso, o valor do objeto naquele contexto não
+    entra em nenhuma regra.
+    """
+    adjacency = defaultdict(list)
+    queue = []
+    for ref in graph.references:
+        if ref.target < 0:
+            continue
+        if ref.source_kind == "object":
+            adjacency[(ref.source_index, ref.context)].append((ref.target, ref.context))
+        else:
+            queue.append((ref.target, ref.context))
+    seen = set(queue)
+    while queue:
+        node = queue.pop()
+        for nxt in adjacency.get(node, ()):
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append(nxt)
+    return frozenset(seen)
 
 
 def rule_refs_from_graph(graph) -> list:
@@ -201,19 +236,36 @@ def compare(before: State, after: State, refs_before: list, renames: dict) -> li
     return diffs
 
 
-def compare_objects(before: State, after: State, pairs: list) -> list:
+def compare_objects(before: State, after: State, pairs: list, skip: frozenset = frozenset(),
+                    used: frozenset = None) -> list:
     """Valor efetivo de cada grupo que continua existindo, em cada contexto de firewall.
 
     pairs: [(objeto antes, mesmo objeto depois)]. Cobre também grupos sem uso: o XML
     intermediário (fases 1-3) pode ir para produção sem a fase 4, e um grupo que muda de
     significado em silêncio quebraria quem passar a usá-lo.
+
+    Contextos onde o objeto está sombreado no estado anterior (o nome resolve para outro
+    objeto, como uma cópia local de mesmo nome) não são comparados: ali nenhum firewall
+    usa esse objeto, e o significado do nome é o da cópia, verificada por conta própria.
+    skip: pares (chave do objeto, contexto) também excluídos da comparação.
+    used: se informado (used_contexts), um objeto de escopo ancestral (Shared) só é comparado
+    nos DGs onde alguma regra o alcança: ali o valor dele não chega a regra nenhuma. Objetos
+    de DG são sempre comparados no próprio DG, com ou sem uso.
     Retorna [(contexto, objeto antes, valores antes, valores depois, chaves atravessadas)].
     """
     diffs = []
     for obj_before, obj_after in pairs:
         if obj_before.leaf is not None:
             continue
+        types = NAME_TYPES.get(obj_before.object_type, (obj_before.object_type,))
         for context in before.firewall_contexts(obj_before.scope):
+            if (used is not None and context != obj_before.scope
+                    and (obj_before.key, context) not in used):
+                continue
+            if (obj_before.key, context) in skip:
+                continue
+            if before.resolve(context, obj_before.name, types) != [obj_before]:
+                continue
             v_before, t_before = before.expand_object(context, obj_before)
             v_after, t_after = after.expand_object(context, obj_after)
             if v_before != v_after:

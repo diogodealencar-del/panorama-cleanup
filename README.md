@@ -6,7 +6,7 @@ As regras do projeto estão no [`CLAUDE.md`](CLAUDE.md). A prioridade absoluta �
 
 ## Status
 
-Etapas 1 a 8 implementadas e validadas em Panorama PAN-OS 11.1 (incluindo commit e push em ambiente real). Todos os modos implementados: `inventory`, `analyze`, `plan`, `apply` e `validate`. Implantação pela Panorama XML API. Procedimento: [`docs/procedimento-uso-da-ferramenta.md`](docs/procedimento-uso-da-ferramenta.md); modelo de homologação, implantação e rollback: [`docs/modelo-etapa-09.md`](docs/modelo-etapa-09.md). Como a ferramenta foi construída (prompts por etapa e decisões): [`Procedimento_Panorama_Configuration_Analyzer.md`](Procedimento_Panorama_Configuration_Analyzer.md).
+Etapas 1 a 8 implementadas e validadas em Panorama PAN-OS 11.1 (incluindo commit e push em ambiente real). Versão 0.3.0: nomes por valor (`NOME-IP`, `NOME-FQDN`, `NOME-PROTOCOLO-PORTA`), herança de descrição na consolidação, fase 0 para mover objetos presos a grupos de Shared e verificador independente de IP, porta e application como bloqueio (docs/arquitetura.md D18, D20, D28 e D29). A fase 0 e a 0.3.0 ainda não foram executadas em Panorama real: homologar antes de produção. Todos os modos implementados: `inventory`, `analyze`, `plan`, `apply` e `validate`. Implantação pela Panorama XML API. Procedimento: [`docs/procedimento-uso-da-ferramenta.md`](docs/procedimento-uso-da-ferramenta.md); modelo de homologação, implantação e rollback: [`docs/modelo-etapa-09.md`](docs/modelo-etapa-09.md). Como a ferramenta foi construída (prompts por etapa e decisões): [`Procedimento_Panorama_Configuration_Analyzer.md`](Procedimento_Panorama_Configuration_Analyzer.md).
 
 ## Instalação
 

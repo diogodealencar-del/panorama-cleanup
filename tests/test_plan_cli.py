@@ -40,7 +40,7 @@ def test_plan_generates_reports_without_touching_input(setup):
     assert not list(project.root.rglob("output/xml/*"))
     data = json.loads((out / "plan.json").read_text())
     assert data["summary"]["verification_differences"] == 0
-    assert data["summary"]["rename_move"] == 1
+    assert data["summary"]["rename_move"] == 3  # SHADOW, OVR-MEMBER e a cópia da fase 0
     m = json.loads((out / "manifest.json").read_text())
     assert m["status"] == "ok" and m["analysis_run"] == analysis.name
 

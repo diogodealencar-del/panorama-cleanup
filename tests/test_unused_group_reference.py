@@ -1,6 +1,6 @@
 """Caso Site_REC: grupo local sem uso (DELETE_UNUSED) com membro renomeado.
 
-O service 389 local difere do de Shared e vira 389_DG-REC em Shared. O grupo PT_TCP_AD,
+O service 389 local difere do de Shared e vira 389-tcp-389 em Shared. O grupo PT_TCP_AD,
 sem uso, continua no DG até a fase 4 (que pode ser adiada): seu membro precisa ser
 atualizado na fase 2. Antes da correção, o plano listava a atualização como "cópia criada
 em Shared" sem operação correspondente; a Etapa 5 não a aplicava e passava em todas as
@@ -41,7 +41,7 @@ def test_plan_has_phase2_update_for_unused_group(planned):
     assert len(updates) == 1 and updates[0]["phase"] == 2
     assert [o["name"] for o in ops if o["operation"] == "DELETE_UNUSED"] == ["PT_TCP_AD"]
     (row,) = [r for r in reference_update_rows(an, plan) if r["kind"] == "objeto"]
-    assert (row["source_name"], row["old"], row["new"]) == ("PT_TCP_AD", "389", "389_DG-REC")
+    assert (row["source_name"], row["old"], row["new"]) == ("PT_TCP_AD", "389", "389-tcp-389")
     assert row["applies_to"] == "objeto local"
 
 
@@ -67,9 +67,9 @@ def test_full_chain_applies_update_and_is_approved(tmp_path):
     assert rows and all(r["status"] == "aplicado" for r in rows)
     checks = {r["check"]: r["result"] for r in csv.DictReader(open(convert / "integrity-checks.csv", encoding="utf-8"))}
     assert checks["todas as atualizações de referência do plano aplicadas"] == "OK"
-    assert checks["valor efetivo dos grupos remanescentes idêntico em todos os firewalls (inclui sem uso)"] == "OK"
+    assert checks["valor efetivo dos grupos remanescentes idêntico em todo DG onde uma regra os usa"] == "OK"
     shared_xml = next((work / "output" / "xml" / convert.name).glob("*.shared.xml")).read_text(encoding="utf-8")
-    assert "<member>389_DG-REC</member>" in shared_xml.split('name="PT_TCP_AD"')[1].split("</entry>")[0]
+    assert "<member>389-tcp-389</member>" in shared_xml.split('name="PT_TCP_AD"')[1].split("</entry>")[0]
 
     assert main(w + ["apply", "--stage", "cleanup", "--keep-type", "tag", "--input", b,
                      "--plan", str(plan), "--from-run", str(convert)]) == EXIT_OK
@@ -96,4 +96,4 @@ def test_missing_update_is_caught_at_stage5(planned):
     result = apply_plan(original, ops, [])
     checks, _, _ = validate_transformation(original, result.tree, result, ops)
     by_name = {c.name: c.passed for c in checks}
-    assert by_name["valor efetivo dos grupos remanescentes idêntico em todos os firewalls (inclui sem uso)"] is False
+    assert by_name["valor efetivo dos grupos remanescentes idêntico em todo DG onde uma regra os usa"] is False

@@ -8,9 +8,12 @@ rebaixado para KEEP_LOCAL, com o motivo registrado.
 Decisões:
 - KEEP: objeto de Shared permanece como está.
 - MOVE: objeto de DG vai para Shared com o mesmo nome.
-- RENAME_MOVE: objeto de DG vai para Shared como NOME_DG; referências do DG atualizadas.
-- CONSOLIDATE: cópia de DG removida porque outro objeto de mesmo nome e valor
-  passa a representá-la em Shared.
+- RENAME_MOVE: objeto de DG vai para Shared com nome novo (naming.py: NOME-IP,
+  NOME-FQDN, NOME-PROTOCOLO-PORTA ou, para grupos, NOME_DG); referências do DG atualizadas.
+- CONSOLIDATE: cópia de DG removida porque outro objeto de mesmo valor passa a
+  representá-la em Shared: o de mesmo nome ou, quando o nome novo coincide (duas
+  cópias com o mesmo IP em DGs diferentes), o de mesmo nome novo; neste caso as
+  referências do DG são atualizadas para o nome novo.
 - DELETE_UNUSED: objeto sem utilização comprovada (executado só na Etapa 6).
 - KEEP_LOCAL: permanece no Device Group (motivo em reason).
 - PENDING_DECISION: permanece no Device Group até decisão do usuário.
@@ -25,11 +28,14 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 
+from panorama_cleanup.dependency_analyzer import Resolver
 from panorama_cleanup.duplicate_analyzer import NAME_FAMILY
 from panorama_cleanup.effective_model import (
-    State, compare, compare_objects, objects_from_inventory, rule_refs_from_graph, with_changes,
+    State, compare, compare_objects, objects_from_inventory, rule_refs_from_graph, used_contexts,
+    with_changes,
 )
 from panorama_cleanup.errors import PanoramaCleanupError
+from panorama_cleanup.naming import conflict_name, valid_name
 from panorama_cleanup.xml_reader import SHARED
 
 KEEP, MOVE, RENAME_MOVE, CONSOLIDATE = "KEEP", "MOVE", "RENAME_MOVE", "CONSOLIDATE"
@@ -58,6 +64,7 @@ RISK = {
     CONSOLIDATE: "baixo", MOVE: "baixo", RENAME_MOVE: "médio", DELETE_UNUSED: "médio",
 }
 PHASES = (
+    (0, "Criar cópias locais de grupos de Shared que variam por Device Group"),
     (1, "Criar objetos em Shared"),
     (2, "Atualizar referências no Device Group"),
     (3, "Excluir cópias locais"),
@@ -87,12 +94,54 @@ class Plan:
     verification: list           # [(fase, contexto, referências verificadas, diferenças)]
     demotions: list = field(default_factory=list)
     iterations: int = 0
+    # Regra 3: descrição herdada da cópia local quando o objeto mantido não tem descrição.
+    # [{"target": chave, "source": chave, "description": texto, "xpath": xpath final}]
+    descriptions: list = field(default_factory=list)
+    # Fase 0 (localization.py): cópias locais de grupos de Shared, uma por (grupo, DG).
+    # [{"key": chave da cópia, "object_type", "name", "dg", "source_xpath"}]
+    localizations: list = field(default_factory=list)
 
 
-def build_plan(an, max_iterations: int = 50) -> Plan:
-    plan = _Planner(an).run(max_iterations)
+def build_plan(an, max_iterations: int = 50, forced_rename: frozenset = frozenset()) -> Plan:
+    """forced_rename: cópias locais da fase 0; vão para Shared sempre com nome novo
+    (nunca consolidadas no grupo de Shared de origem, cujo valor no DG elas assumem)."""
+    plan = _Planner(an, forced_rename).run(max_iterations)
     check_tag_invariant(an.inventory, plan)
+    plan.descriptions = inherited_descriptions(an.inventory, plan.decisions)
     return plan
+
+
+def final_xpath(inv, key, decision) -> str:
+    """XPath do objeto que representa a chave ao fim das fases 1-3."""
+    from panorama_cleanup.inventory import quote
+    rec = inv.records[key]
+    if decision.action in (MOVE, RENAME_MOVE):
+        return f"/config/shared/{rec.object_type}/entry[@name={quote(decision.new_name)}]"
+    return rec.xpath
+
+
+def inherited_descriptions(inv, decisions) -> list:
+    """Regra 3: ao consolidar cópias, a descrição do objeto mantido prevalece; se ele
+    não tiver descrição e alguma cópia tiver, a da primeira cópia (ordem de DG e nome)
+    é copiada para ele antes de a cópia ser excluída. Só texto: nenhum valor muda."""
+    copies = defaultdict(list)
+    for key, d in decisions.items():
+        if d.action == CONSOLIDATE and d.target >= 0:
+            copies[d.target].append(key)
+    out = []
+    for target, keys in sorted(copies.items()):
+        td = decisions[target]
+        if td.action not in (KEEP, MOVE, RENAME_MOVE):
+            continue
+        if (inv.records[target].description or "").strip():
+            continue
+        for key in sorted(keys, key=lambda k: (inv.records[k].scope, inv.records[k].name, k)):
+            text = inv.records[key].description or ""
+            if text.strip():
+                out.append({"target": target, "source": key, "description": text,
+                            "xpath": final_xpath(inv, target, td)})
+                break
+    return out
 
 
 def check_tag_invariant(inv, plan) -> None:
@@ -110,8 +159,9 @@ def check_tag_invariant(inv, plan) -> None:
 
 
 class _Planner:
-    def __init__(self, an):
+    def __init__(self, an, forced_rename=frozenset()):
         self.an, self.inv = an, an.inventory
+        self.forced_rename = frozenset(forced_rename)
         self.objects = objects_from_inventory(self.inv, "name+color")
         self.before = State(self.objects, self.inv.device_groups)
         self.rule_refs = rule_refs_from_graph(an.graph)
@@ -121,6 +171,8 @@ class _Planner:
             if ref.target >= 0:
                 self.inbound[ref.target].append(ref)
         self.demotions = []
+        self.resolver = Resolver(self.inv)
+        self.used = used_contexts(an.graph)
 
     # --- decisões iniciais ----------------------------------------------------
 
@@ -172,6 +224,19 @@ class _Planner:
                 decisions[d.target] = Decision(d.target, KEEP, SHARED, t.name, -1,
                                                "exclusão cancelada: passa a representar cópias "
                                                "consolidadas dos Device Groups")
+
+        # Regra 3: cópia local sem uso, idêntica ao objeto de Shared de mesmo nome que
+        # continua existindo, é consolidada nele (fase 3, provada pela simulação) em vez
+        # de ficar para a exclusão de não utilizados. Não ressuscita objeto de Shared sem uso.
+        for i, d in list(decisions.items()):
+            rec = inv.records[i]
+            if d.action != DELETE_UNUSED or rec.scope == SHARED:
+                continue
+            shared = [k for k in groups[(NAME_FAMILY.get(rec.object_type, rec.object_type), rec.name)]
+                      if inv.records[k].scope == SHARED]
+            if len(shared) == 1 and decisions[shared[0]].action == KEEP and self._same(i, shared[0]):
+                decisions[i] = Decision(i, CONSOLIDATE, SHARED, rec.name, shared[0],
+                                        "sem uso; idêntico ao objeto de Shared de mesmo nome")
         return decisions
 
     def _same(self, copy: int, keeper: int) -> bool:
@@ -192,6 +257,8 @@ class _Planner:
 
     def _decide(self, i, shared, used_dg, dup) -> Decision:
         rec = self.inv.records[i]
+        if i in self.forced_rename:
+            return self._rename(i, "cópia da fase 0 de grupo de Shared com valor próprio no DG")
         if shared:
             if len(shared) > 1:
                 return Decision(i, KEEP_LOCAL, rec.scope, rec.name, -1,
@@ -215,37 +282,66 @@ class _Planner:
             return Decision(i, KEEP_LOCAL, rec.scope, rec.name, -1,
                             f"tag em conflito ({why}); tags não são renomeadas nem alteradas "
                             "(requisito de transparência)")
-        return Decision(i, RENAME_MOVE, SHARED, f"{rec.name}_{rec.scope}", -1, why)
+        new_name, _ = conflict_name(rec.name, rec.object_type, self.inv.elements[i], rec.scope)
+        return Decision(i, RENAME_MOVE, SHARED, new_name, -1, why)
 
     # --- validações de nome e referências -----------------------------------
 
     def check_renames(self, decisions) -> dict:
-        taken = defaultdict(set)
-        for r in self.inv.records:
-            taken[NAME_FAMILY.get(r.object_type, r.object_type)].add(r.name)
+        """Valida os nomes novos; cópias de mesmo valor e mesmo nome novo são consolidadas.
+
+        - nome inválido ou acima do limite: PENDING_DECISION (nada é truncado);
+        - nome novo já usado por objeto de Shared de valor idêntico: CONSOLIDATE nele;
+        - nome novo já planejado para outra cópia de valor idêntico: CONSOLIDATE nela;
+        - nome novo já usado por objeto de valor diferente: PENDING_DECISION.
+        """
+        taken = defaultdict(dict)   # família -> nome -> chave do objeto existente
+        for k, r in enumerate(self.inv.records):
+            taken[NAME_FAMILY.get(r.object_type, r.object_type)].setdefault(r.name, k)
+        planned = defaultdict(dict)  # família -> nome novo -> chave do representante
         out = dict(decisions)
         for key in sorted(k for k, d in decisions.items() if d.action == RENAME_MOVE):
             d, rec = decisions[key], self.inv.records[key]
             family = NAME_FAMILY.get(rec.object_type, rec.object_type)
-            if len(d.new_name) > NAME_LIMIT:
+            if len(d.new_name) > NAME_LIMIT or not valid_name(d.new_name):
                 out[key] = Decision(key, PENDING, rec.scope, rec.name, -1,
-                                    f"nome {d.new_name!r} excede {NAME_LIMIT} caracteres")
-                continue
-            if d.new_name in taken[family]:
-                out[key] = Decision(key, PENDING, rec.scope, rec.name, -1,
-                                    f"nome {d.new_name!r} já existe ou já foi planejado")
+                                    f"nome {d.new_name!r} inválido ou acima de {NAME_LIMIT} "
+                                    "caracteres; definir nome manualmente")
                 continue
             blocked = self._blocking_reference(key)
             if blocked:
                 out[key] = Decision(key, KEEP_LOCAL, rec.scope, rec.name, -1, blocked)
                 continue
-            taken[family].add(d.new_name)
+            rep = planned[family].get(d.new_name)
+            if rep is not None:
+                if self._same(key, rep):
+                    out[key] = Decision(key, CONSOLIDATE, SHARED, d.new_name, rep,
+                                        f"mesmo valor da cópia de {self.inv.records[rep].scope} "
+                                        f"(nome novo {d.new_name!r})")
+                else:
+                    out[key] = Decision(key, PENDING, rec.scope, rec.name, -1,
+                                        f"nome {d.new_name!r} já planejado para valor diferente")
+                continue
+            existing = taken[family].get(d.new_name)
+            if existing is not None:
+                er = self.inv.records[existing]
+                if (er.scope == SHARED and decisions[existing].action == KEEP
+                        and self._same(key, existing)):
+                    out[key] = Decision(key, CONSOLIDATE, SHARED, d.new_name, existing,
+                                        f"já existe em Shared {d.new_name!r} com o mesmo valor")
+                else:
+                    out[key] = Decision(key, PENDING, rec.scope, rec.name, -1,
+                                        f"nome {d.new_name!r} já existe com outro valor ou escopo")
+                continue
+            planned[family][d.new_name] = key
         return out
 
     def _blocking_reference(self, key) -> str:
         rec = self.inv.records[key]
         allowed = set(self.before.firewall_contexts(rec.scope))
         for ref in self.inbound[key]:
+            if self._shadowed_source(ref):
+                continue
             if ref.confidence != "confirmed":
                 return f"referência não confirmada ({ref.source_kind} {ref.source_name}); nome não pode mudar"
             if ref.source_scope not in allowed:
@@ -254,14 +350,39 @@ class _Planner:
                         f"efetivo nos firewalls de {rec.scope}")
         return ""
 
+    def _shadowed_source(self, ref) -> bool:
+        """Objeto de origem irrelevante no contexto da referência.
+
+        Sem uso no contexto (nenhuma regra o alcança ali): o valor dele nesse DG não entra
+        em regra nenhuma.
+
+        Se, no contexto, o nome do objeto de origem resolve para outro objeto (uma
+        cópia local de mesmo nome), os firewalls desse contexto nunca usam a origem;
+        a referência dela não depende do nome do alvo ali.
+        """
+        if ref.source_kind != "object" or ref.source_index is None:
+            return False
+        source = self.inv.records[ref.source_index]
+        if source.scope != ref.context and (ref.source_index, ref.context) not in self.used:
+            # Só para definições de outro escopo (Shared ou DG ancestral). Objetos do próprio
+            # DG, mesmo sem uso, têm os membros atualizados para continuarem resolvendo
+            # até a fase 4.
+            return True
+        family = NAME_FAMILY.get(source.object_type, source.object_type)
+        types = {t for t, f in NAME_FAMILY.items() if f == family} or {source.object_type}
+        resolution, hits = self.resolver.resolve(source.name, types, ref.context)
+        return resolution == "resolved" and hits != [ref.source_index]
+
     def updates(self, decisions) -> tuple:
         """Atualizações de referência exigidas pelas renomeações."""
         rule_updates, object_updates = {}, {}
         for key, d in decisions.items():
-            if d.action != RENAME_MOVE:
-                continue
             rec = self.inv.records[key]
+            if d.action not in (RENAME_MOVE, CONSOLIDATE) or d.new_name == rec.name:
+                continue
             for ref in self.inbound[key]:
+                if self._shadowed_source(ref):
+                    continue
                 if ref.source_kind == "rule":
                     rule_updates[(ref.source_xpath, ref.field, ref.value)] = dict(
                         source_xpath=ref.source_xpath, source_scope=ref.source_scope,
@@ -312,6 +433,17 @@ class _Planner:
         decisions = self.check_renames(self.initial())
         for iteration in range(1, max_iterations + 1):
             rule_updates, object_updates = self.updates(decisions)
+            # Uma cópia consolidada some na fase 3; se um membro dela for renomeado, não há
+            # onde aplicar a troca (o objeto mantido é a definição de outro escopo, que não
+            # muda). Ela passa a ir para Shared com nome próprio, com o membro trocado.
+            stuck = sorted({u["source"] for u in object_updates.values()
+                            if decisions[u["source"]].action == CONSOLIDATE})
+            if stuck:
+                for k in stuck:
+                    decisions[k] = self._rename(k, "membro renomeado; a cópia não pode ser "
+                                                   "consolidada no objeto de mesmo nome")
+                decisions = self.check_renames(decisions)
+                continue
             states = self.states(decisions, rule_updates, object_updates)
             demote = {}
             verification = []
@@ -334,7 +466,7 @@ class _Planner:
                 present = {o.key: o for o in state.objects if o.key >= 0}
                 pairs = [(o, present[o.key]) for o in self.before.objects
                          if o.leaf is None and o.key in present]
-                object_diffs = compare_objects(self.before, state, pairs)
+                object_diffs = compare_objects(self.before, state, pairs, used=self.used)
                 for context, obj, _, _, touched in object_diffs:
                     keys = {abs(k) - 1 if k < 0 else k for k in touched}
                     changed = [k for k in keys if decisions[k].action in CHANGES]
@@ -403,8 +535,12 @@ def operation_sequence(inv, plan) -> list:
         return (rank.get(rec.object_type, len(rank)), level.get(key, 0), rec.scope, rec.name)
 
     ops = []
+    for item in sorted(plan.localizations, key=lambda x: (x["object_type"], x["name"], x["dg"])):
+        ops.append((0, "CREATE_LOCAL_COPY", item["key"], item))
     for key in sorted((k for k, d in decisions.items() if d.action in (MOVE, RENAME_MOVE)), key=order):
         ops.append((1, "CREATE_SHARED", key, decisions[key]))
+    for item in plan.descriptions:
+        ops.append((1, "SET_DESCRIPTION", item["target"], item))
     for u in sorted(plan.rule_updates, key=lambda u: (u["source_xpath"], u["field"], u["old"])):
         ops.append((2, "UPDATE_RULE_REFERENCE", u["target"], u))
     for u in sorted(plan.object_updates, key=lambda u: (u["source"], u["field"], u["old"])):

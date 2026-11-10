@@ -48,7 +48,7 @@ def test_roundtrip_is_byte_identical():
 def test_expected_objects_moved_and_removed(applied):
     _, _, _, result = applied
     t = result.tree
-    assert t.xpath("/config/shared/address/entry[@name='SHADOW_DG-RJ']/ip-netmask/text()") == ["10.0.0.99"]
+    assert t.xpath("/config/shared/address/entry[@name='SHADOW-10.0.0.99']/ip-netmask/text()") == ["10.0.0.99"]
     assert t.xpath("/config/shared/address/entry[@name='NAT-TARGET']")
     assert not t.xpath(f"{DG}[@name='DG-RJ']/address/entry[@name='SHADOW']")
     assert not t.xpath(f"{DG}[@name='DG-RJ']/address/entry[@name='SERVER']")
@@ -60,7 +60,7 @@ def test_rule_member_renamed_in_place(applied):
     _, _, _, result = applied
     members = result.tree.xpath(f"{DG}[@name='DG-RJ']/post-rulebase/security/rules/"
                                 "entry[@name='RJ-R1']/destination/member/text()")
-    assert members[0] == "SHADOW_DG-RJ"
+    assert members[0] == "SHADOW-10.0.0.99"
     assert "SHADOW" not in members
 
 
@@ -124,7 +124,7 @@ def test_existing_name_in_shared_stops(applied):
     t = copy.deepcopy(tree)
     shared = t.xpath("/config/shared/address")[0]
     clash = copy.deepcopy(shared[0])
-    clash.set("name", "SHADOW_DG-RJ")
+    clash.set("name", "SHADOW-10.0.0.99")
     shared.append(clash)
     with pytest.raises(ApplyError, match="já existe"):
         apply_plan(t, ops, copies)
