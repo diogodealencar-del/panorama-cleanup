@@ -22,7 +22,7 @@ from lxml import etree
 
 from panorama_cleanup.errors import PanoramaCleanupError
 
-APPLY_PHASES = (1, 2, 3)
+APPLY_PHASES = (0, 1, 2, 3)
 
 
 class ApplyError(PanoramaCleanupError):
@@ -49,6 +49,8 @@ class ApplyResult:
     rule_renames: dict = field(default_factory=dict)      # (xpath regra, campo, antigo) -> novo
     object_renames: list = field(default_factory=list)    # (xpath objeto, campo, antigo, novo)
     copy_member_renames: dict = field(default_factory=dict)  # xpath origem -> [(campo, antigo, novo)]
+    descriptions: list = field(default_factory=list)      # (xpath, descrição copiada)
+    local_copies: list = field(default_factory=list)      # fase 0: xpaths das cópias locais
 
 
 def apply_plan(tree, operations: list, copy_member_updates: list, phases=APPLY_PHASES) -> ApplyResult:
@@ -64,8 +66,17 @@ def apply_plan(tree, operations: list, copy_member_updates: list, phases=APPLY_P
         if phase not in phases:
             continue
         kind = op["operation"]
-        if kind == "CREATE_SHARED":
+        if kind == "CREATE_LOCAL_COPY":
+            from panorama_cleanup.localization import create_local_copy
+            create_local_copy(work, op["object_type"], op["name"], op["scope"])
+            result.changes.append(AppliedChange(int(op["seq"]), 0, kind, op["xpath"],
+                                                f"cópia local de {op['source']}",
+                                                before=op["source"], after=op["xpath"]))
+            result.local_copies.append(op["xpath"])
+        elif kind == "CREATE_SHARED":
             _create_shared(work, op, renames_for_copy.get(op["xpath"], []), result)
+        elif kind == "SET_DESCRIPTION":
+            _set_description(work, op, result)
         elif kind == "UPDATE_RULE_REFERENCE":
             _update_reference(work, op, result, is_rule=True)
         elif kind == "UPDATE_OBJECT_REFERENCE":
@@ -116,6 +127,31 @@ def _create_shared(tree, op, member_renames, result) -> None:
         detail += "; membros " + ", ".join(f"{o}->{n}" for _, o, n in member_renames)
     result.changes.append(AppliedChange(int(op["seq"]), 1, "CREATE_SHARED", xpath, detail,
                                         before=op["xpath"], after=xpath))
+
+
+def _set_description(tree, op, result) -> None:
+    """Regra 3: copia a descrição da cópia local para o objeto mantido sem descrição."""
+    entry = _one(tree, op["xpath"], "SET_DESCRIPTION")
+    current = entry.find("description")
+    if current is not None and (current.text or "").strip():
+        raise ApplyError(f"SET_DESCRIPTION: {op['xpath']} já tem descrição; o plano não a substitui")
+    if current is None:
+        # Acrescentado como último filho, como faz o set da XML API (merge): o XML gerado
+        # e o resultado dos comandos ficam idênticos (generate_cli.same_config).
+        current = etree.Element("description")
+        children = [c for c in entry if isinstance(c.tag, str)]
+        if children:
+            last = children[-1]
+            current.tail = last.tail
+            last.tail = children[-2].tail if len(children) > 1 else entry.text
+            last.addnext(current)
+        else:
+            entry.append(current)
+    current.text = op["value"]
+    result.descriptions.append((op["xpath"], op["value"]))
+    result.changes.append(AppliedChange(int(op["seq"]), 1, "SET_DESCRIPTION", op["xpath"],
+                                        f"descrição copiada de {op['source']}", before="",
+                                        after=op["value"]))
 
 
 def _update_reference(tree, op, result, is_rule: bool) -> None:

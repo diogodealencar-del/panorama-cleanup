@@ -505,7 +505,7 @@ PLAN_OBJECT_COLUMNS = (
 )
 OPERATION_COLUMNS = (
     "seq", "phase", "operation", "scope", "object_type", "name", "new_scope", "new_name",
-    "source", "field", "risk", "impact", "validation", "xpath",
+    "source", "field", "risk", "impact", "validation", "xpath", "value",
 )
 REFERENCE_UPDATE_COLUMNS = (
     "status", "kind", "scope", "source_type", "source_name", "rule_disabled", "field", "old",
@@ -544,6 +544,8 @@ def _plan_notes(an, i, d) -> str:
     r = an.inventory.records[i]
     if d.action == CONSOLIDATE:
         t = an.inventory.records[d.target]
+        if r.description and not t.description:
+            return f"descrição local {r.description!r} copiada para o objeto mantido, se for a primeira"
         if r.description != t.description:
             return (f"descrição local {r.description!r} não será preservada; "
                     f"permanece {t.description!r}")
@@ -561,8 +563,13 @@ def operation_rows(an, plan) -> list:
         row = {"seq": seq, "phase": phase, "operation": op, "scope": r.scope,
                "object_type": r.object_type, "name": r.name, "new_scope": "", "new_name": "",
                "source": "", "field": "", "risk": "", "impact": "", "validation": "",
-               "xpath": r.xpath}
-        if op == "CREATE_SHARED":
+               "xpath": r.xpath, "value": ""}
+        if op == "CREATE_LOCAL_COPY":
+            row.update(source=payload["source_xpath"], risk="baixo",
+                       impact="cópia idêntica do grupo de Shared no DG; no DG o nome passa a "
+                              "resolver para a cópia, com o mesmo valor; sai na fase 3",
+                       validation="valor efetivo das regras do DG idêntico (simulado)")
+        elif op == "CREATE_SHARED":
             renamed = payload.new_name != r.name
             row.update(new_scope="shared", new_name=payload.new_name,
                        risk="médio" if renamed else "baixo",
@@ -570,6 +577,13 @@ def operation_rows(an, plan) -> list:
                                "cópia em Shared com mesmo nome e valor; ")
                        + "objeto local continua prevalecendo no DG até a fase 3",
                        validation="objeto existe em Shared com valor e tags idênticos ao original")
+        elif op == "SET_DESCRIPTION":
+            src = inv.records[payload["source"]]
+            row.update(field="description", value=payload["description"],
+                       source=f"{src.scope}:{src.name}", xpath=payload["xpath"], risk="baixo",
+                       impact="descrição copiada da cópia local (o objeto mantido não tinha "
+                              "descrição); nenhum valor muda",
+                       validation="description do objeto igual ao texto da cópia local")
         elif op == "UPDATE_RULE_REFERENCE":
             row.update(new_name=payload["new"], source=payload["source_name"],
                        field=payload["field"], risk="médio", xpath=payload["source_xpath"],

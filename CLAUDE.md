@@ -130,6 +130,10 @@ Diferenciar obrigatoriamente três situações.
 
 ### A. Mesmo nome e mesmo valor
 
+A cópia local sai e o DG passa a usar o objeto de Shared. Descrição: se os dois tiverem,
+fica a de Shared; se só a cópia local tiver, ela é copiada para o objeto de Shared antes
+da exclusão da cópia (operação SET_DESCRIPTION, fase 1).
+
 Exemplo:
 
 DG-RJ:
@@ -158,10 +162,13 @@ SERVER = 192.168.20.10
 Resultado esperado:
 
 Shared:
-SERVER_DG-RJ = 192.168.10.10
-SERVER_DG-BH = 192.168.20.10
+SERVER-192.168.10.10 = 192.168.10.10
+SERVER-192.168.20.10 = 192.168.20.10
 
 Atualizar referências conforme a origem e o contexto de cada objeto.
+
+Cópias de DGs diferentes com o mesmo valor recebem o mesmo nome novo e viram um único
+objeto em Shared.
 
 Nunca utilizar o mesmo objeto para representar valores diferentes.
 
@@ -175,16 +182,18 @@ Verificar referências, dependências, atributos e impacto da substituição.
 
 ## 6. PADRÃO DE NOMENCLATURA
 
-Utilizar:
+O nome pode mudar; o valor do objeto, nunca. Objeto em conflito recebe, ao lado do
+nome, o próprio valor (panorama_cleanup/naming.py):
 
-NOME_ORIGINAL_DEVICEGROUP
+- address de host: NOME-IP (SERVER-192.168.10.10);
+- address de rede: NOME-REDE-MÁSCARA (NET-10.0.0.0-24), porque a barra não é aceita em nome;
+- address ip-range: NOME-INICIO-FIM; fqdn: NOME-FQDN (WEB-portal.empresa.com.br);
+- service: NOME-PROTOCOLO-PORTA (Antivirus-tcp-8764); vírgulas viram "_";
+- address-group, service-group e demais tipos, que não têm valor único:
+  NOME_ORIGINAL_DEVICEGROUP (GRP_SERVIDORES_DG-RJ).
 
-Exemplos:
-
-SERVER_DG-RJ
-SERVER_DG-BH
-DNS_DG-MATRIZ
-WEB_DG-FILIAL
+Nome com caractere fora de letras, números, espaço, hífen, underscore e ponto, ou acima
+do limite, fica PENDING_DECISION para nome manual.
 
 Verificar:
 

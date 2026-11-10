@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panorama-cleanup"
-version = "0.2.6"
+version = "0.3.0"
 description = "Panorama Configuration Analyzer & Object Cleanup"
 requires-python = ">=3.9"
 license = { text = "MIT" }

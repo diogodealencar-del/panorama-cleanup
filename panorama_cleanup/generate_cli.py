@@ -76,9 +76,23 @@ def build_api_ops(operations, cleanup_deletions, converted, final, original=None
         existing = {original.getpath(e) for e in original.iter() if isinstance(e.tag, str)}
     for op in sorted(operations, key=lambda o: int(o["seq"])):
         phase, kind = int(op["phase"]), op["operation"]
-        if phase not in (1, 2, 3):
+        if phase not in (0, 1, 2, 3):
             continue
-        if kind == "CREATE_SHARED":
+        if kind == "CREATE_LOCAL_COPY":
+            source_tree = original if original is not None else converted
+            found = source_tree.xpath(op["source"])
+            if len(found) != 1:
+                raise CommandError(f"Grupo de Shared da fase 0 não encontrado: {op['source']}")
+            container = op["xpath"].rsplit("/entry[", 1)[0]
+            target, element = container, compact(found[0])
+            if original is not None and container not in existing and not original.xpath(container):
+                parent, tag = container.rsplit("/", 1)
+                target, element = parent, f"<{tag}>{element}</{tag}>"
+            existing.add(container)
+            ops.append(ApiOp(int(op["seq"]), 0, kind, "set", target, element,
+                             f"{op['scope']}:{op['name']}",
+                             f"cópia local idêntica de {op['source']} (sai na fase 3)"))
+        elif kind == "CREATE_SHARED":
             container = f"/config/shared/{op['object_type']}"
             xpath = f"{container}/entry[@name={_q(op['new_name'])}]"
             found = converted.xpath(xpath)
@@ -95,6 +109,12 @@ def build_api_ops(operations, cleanup_deletions, converted, final, original=None
             ops.append(ApiOp(int(op["seq"]), 1, kind, "set", target, element,
                              f"shared:{op['new_name']}",
                              f"cria em Shared (origem {op['scope']}:{op['name']})"))
+        elif kind == "SET_DESCRIPTION":
+            found = converted.xpath(f"{op['xpath']}/description")
+            if len(found) != 1 or (found[0].text or "") != op["value"]:
+                raise CommandError(f"Descrição planejada não encontrada no XML convertido: {op['xpath']}")
+            ops.append(ApiOp(int(op["seq"]), 1, kind, "set", op["xpath"], compact(found[0]),
+                             op["xpath"], f"descrição copiada de {op['source']}"))
         elif kind in ("UPDATE_RULE_REFERENCE", "UPDATE_OBJECT_REFERENCE"):
             xpath = f"{op['xpath']}/{op['field']}"
             if xpath in edited:
@@ -142,6 +162,9 @@ def _merge(node, element) -> None:
         current = node.find(element.tag)
         if current is None:
             node.append(element)
+            return
+        if not len(element):
+            current.text = element.text   # set em folha existente substitui o valor
             return
         for child in list(element):
             _merge(current, child)
@@ -272,6 +295,7 @@ def _q(value: str) -> str:
 # --- arquivos de execução ---------------------------------------------------------
 
 PHASE_FILES = (
+    (0, "05-fase0-copias-locais", "Criar cópias locais de grupos de Shared que variam por DG"),
     (1, "10-fase1-criar-shared", "Criar objetos em Shared"),
     (2, "20-fase2-atualizar-referencias", "Atualizar referências em regras e grupos locais"),
     (3, "30-fase3-excluir-copias-locais", "Excluir cópias locais nos Device Groups"),
@@ -291,7 +315,9 @@ SOURCES = {
     "cli_guide": "PAN-OS CLI Quick Start, Version 11.1 & later (docs/referencias/pan-os-11.1/ngfw-cli.md)",
 }
 RISK = {
+    "CREATE_LOCAL_COPY": "baixo: cópia idêntica; no DG o nome passa a resolver para ela com o mesmo valor",
     "CREATE_SHARED": "baixo: objeto novo em Shared; o local de mesmo nome continua valendo até a fase 3",
+    "SET_DESCRIPTION": "baixo: só o texto de descrição do objeto mantido; nenhum valor muda",
     "UPDATE_RULE_REFERENCE": "médio: edita a lista de membros de um campo da regra (mesmo valor efetivo)",
     "UPDATE_OBJECT_REFERENCE": "médio: edita a lista de membros de um grupo local (mesmo valor efetivo)",
     "DELETE_LOCAL_COPY": "baixo: o DG passa a usar o objeto de Shared de valor idêntico",
@@ -327,7 +353,7 @@ def write_command_files(out_dir, api_ops, inv_types, meta: dict) -> dict:
     files, index = {}, []
     for key, stem, title in PHASE_FILES:
         ops = groups[key]
-        if key == 5 and not ops:
+        if key in (0, 5) and not ops:
             continue
         tsv = out_dir / f"{stem}.tsv"
         with open(tsv, "w", encoding="utf-8", newline="") as fh:

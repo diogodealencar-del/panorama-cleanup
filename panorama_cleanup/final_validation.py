@@ -35,6 +35,7 @@ class Authorized:
     copy_renames: dict               # xpath original -> [(campo, antigo, novo)]
     deleted_unused: set              # xpaths excluídos na Etapa 6
     kept_types: tuple = ()
+    descriptions: dict = field(default_factory=dict)  # xpath final -> descrição herdada (regra 3)
 
 
 @dataclass
@@ -177,6 +178,17 @@ def _policies(original, final, auth, v):
 
 # --- objetos -----------------------------------------------------------------------
 
+def _with_description(el, text):
+    """Descrição herdada da cópia consolidada (operação SET_DESCRIPTION do plano)."""
+    if text is None:
+        return
+    child = el.find("description")
+    if child is None:
+        child = el.makeelement("description", {})
+        el.append(child)
+    child.text = text
+
+
 def _objects(original, final, an_o, an_f, auth, v):
     from panorama_cleanup.shared_converter import replace_reference
 
@@ -198,6 +210,7 @@ def _objects(original, final, an_o, an_f, auth, v):
             expected.set("name", d["new_name"])
             for f, old, new in auth.copy_renames.get(rec.xpath, ()):
                 replace_reference(expected, f, old, new)
+            _with_description(expected, auth.descriptions.get(new_xpath))
             if rec.xpath in final_by_xpath:
                 status, detail = "ERRO", "original ainda presente no Device Group"
             elif j is None:
@@ -229,6 +242,7 @@ def _objects(original, final, an_o, an_f, auth, v):
             expected = copy.deepcopy(el_o)
             for f, old, new in local_by_xpath.get(rec.xpath, ()):
                 replace_reference(expected, f, old, new)
+            _with_description(expected, auth.descriptions.get(rec.xpath))
             if j is None:
                 status, detail = "ERRO", "objeto mantido ausente no XML final"
             elif canonical(expected) != canonical(an_f.inventory.elements[j]):

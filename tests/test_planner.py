@@ -102,10 +102,10 @@ def test_fixture_is_transparent_in_every_phase(deps):
 
 def test_rename_uses_dg_suffix_and_updates_rule(deps):
     an, plan = deps
-    assert decision(an, plan, "DG-RJ", "SHADOW").new_name == "SHADOW_DG-RJ"
+    assert decision(an, plan, "DG-RJ", "SHADOW").new_name == "SHADOW-10.0.0.99"
     (u,) = plan.rule_updates
     assert (u["source_name"], u["field"], u["old"], u["new"]) == (
-        "RJ-R1", "destination", "SHADOW", "SHADOW_DG-RJ")
+        "RJ-R1", "destination", "SHADOW", "SHADOW-10.0.0.99")
 
 
 def test_override_used_by_shared_definition_stays_local(deps):
@@ -135,10 +135,10 @@ def test_conflict_between_dgs_renames_each(write):
         "DG-B": "<address>" + addr("X", "2.2.2.2") + "</address>" + rule("RB", "X"),
     }))
     an, plan = analyze(path)
-    assert decision(an, plan, "DG-A", "X").new_name == "X_DG-A"
-    assert decision(an, plan, "DG-B", "X").new_name == "X_DG-B"
+    assert decision(an, plan, "DG-A", "X").new_name == "X-1.1.1.1"
+    assert decision(an, plan, "DG-B", "X").new_name == "X-2.2.2.2"
     assert {(u["source_name"], u["new"]) for u in plan.rule_updates} == {
-        ("RA", "X_DG-A"), ("RB", "X_DG-B")}
+        ("RA", "X-1.1.1.1"), ("RB", "X-2.2.2.2")}
     assert all(v[3] == 0 for v in plan.verification)
 
 
@@ -156,8 +156,8 @@ def test_identical_copies_across_dgs_consolidate_into_one(write):
 
 def test_name_collision_is_pending(write):
     path = write(panorama({
-        "DG-A": "<address>" + addr("X", "1.1.1.1") + addr("X_DG-A", "3.3.3.3") + "</address>"
-                + rule("RA", "X", "X_DG-A"),
+        "DG-A": "<address>" + addr("X", "1.1.1.1") + addr("X-1.1.1.1", "3.3.3.3") + "</address>"
+                + rule("RA", "X", "X-1.1.1.1"),
     }, shared="<address>" + addr("X", "2.2.2.2") + "</address>"))
     an, plan = analyze(path)
     d = decision(an, plan, "DG-A", "X")
@@ -171,7 +171,7 @@ def test_name_too_long_is_pending(write):
     }, shared="<address>" + addr(long_name, "2.2.2.2") + "</address>"))
     an, plan = analyze(path)
     d = decision(an, plan, "DG-A", long_name)
-    assert d.action == PENDING and "excede 63" in d.reason
+    assert d.action == PENDING and "acima de 63" in d.reason
 
 
 def test_local_group_member_updated_in_place(write):
@@ -183,9 +183,9 @@ def test_local_group_member_updated_in_place(write):
               + rule("RS", "G", rulebase="pre-rulebase")))
     an, plan = analyze(path)
     assert decision(an, plan, "DG-A", "G").action == KEEP_LOCAL
-    assert decision(an, plan, "DG-A", "X").new_name == "X_DG-A"
+    assert decision(an, plan, "DG-A", "X").new_name == "X-1.1.1.1"
     (u,) = plan.object_updates
-    assert (u["field"], u["old"], u["new"]) == ("static", "X", "X_DG-A")
+    assert (u["field"], u["old"], u["new"]) == ("static", "X", "X-1.1.1.1")
     ops = [op for _, op, _, _ in operation_sequence(an.inventory, plan)]
     assert "UPDATE_OBJECT_REFERENCE" in ops
     assert all(v[3] == 0 for v in plan.verification)
@@ -200,7 +200,7 @@ def test_moved_group_copy_gets_renamed_member(write):
     an, plan = analyze(path)
     assert decision(an, plan, "DG-A", "G").action == MOVE
     (u,) = plan.object_updates
-    assert u["new"] == "X_DG-A" and u["source_action"] == MOVE
+    assert u["new"] == "X-1.1.1.1" and u["source_action"] == MOVE
 
 
 def test_unused_shared_that_becomes_used_is_not_deleted(write):

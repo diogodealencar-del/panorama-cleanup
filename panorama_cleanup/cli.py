@@ -19,7 +19,7 @@ from panorama_cleanup.analysis import run_analysis
 from panorama_cleanup.errors import AnalysisError
 from panorama_cleanup.inventory import build_inventory
 from panorama_cleanup.logging_setup import LOGGER_NAME, configure_logging
-from panorama_cleanup.planner import build_plan
+from panorama_cleanup.localization import plan_with_localization
 from panorama_cleanup.report_generator import (
     analysis_summary, plan_summary, report_hashes, write_analysis_reports,
     write_inventory_reports, write_plan_reports,
@@ -334,9 +334,10 @@ def run_plan(input_path: Path, analysis_dir: Path, settings: Settings) -> int:
     log = logging.getLogger(LOGGER_NAME)
     log.info("Run %s: entrada %s sha256=%s", ctx.run_id, ctx.input_path, ctx.input_sha256)
     try:
-        an = run_analysis(parse_backup(ctx.input_path))
-        analysis_run = check_analysis_run(analysis_dir, ctx, an)
-        plan = build_plan(an)
+        original = parse_backup(ctx.input_path)
+        analysis_run = check_analysis_run(analysis_dir, ctx, run_analysis(original))
+        lp = plan_with_localization(original)
+        an, plan = lp.analysis, lp.plan
         verify_unchanged(ctx.input_path, ctx.input_sha256)
         log.info("Análise de origem: %s", analysis_run)
         reports = write_plan_reports(an, plan, ctx, settings, analysis_run)
@@ -356,7 +357,7 @@ def run_plan(input_path: Path, analysis_dir: Path, settings: Settings) -> int:
     return EXIT_OK
 
 
-def load_approved_plan(plan_dir: Path, ctx, an) -> tuple:
+def load_approved_plan(plan_dir: Path, ctx, lp) -> tuple:
     """Plano aprovado: manifest íntegro, mesmo backup e idêntico ao recalculado agora."""
     import csv
     import json
@@ -379,7 +380,7 @@ def load_approved_plan(plan_dir: Path, ctx, an) -> tuple:
         raise AnalysisError("O plano informado não foi provado equivalente")
     plan_json = json.loads((manifest_path.parent / "plan.json").read_text(encoding="utf-8"))
     operations = plan_json["operations"]
-    if operation_rows(an, build_plan(an)) != operations:
+    if operation_rows(lp.analysis, lp.plan) != operations:
         raise AnalysisError("O plano recalculado sobre este XML difere do plano aprovado")
     with open(manifest_path.parent / "reference-updates.csv", encoding="utf-8", newline="") as fh:
         copies = [r for r in csv.DictReader(fh) if r["applies_to"] == "cópia criada em Shared"]
@@ -400,6 +401,29 @@ def _planned_references_check(plan_dir, result):
                  f"{len(planned)} planejadas; não aplicadas: {len(missing)} {missing[:5]}")
 
 
+def _phase0_check(full_tree, written, lp):
+    """Fases 0-3 sobre o original verdadeiro = XML gravado (fases 1-3 sobre a base)."""
+    from panorama_cleanup.policy_comparator import canonical
+    from panorama_cleanup.xml_validator import Check
+    same = canonical(full_tree.getroot()) == canonical(written.getroot())
+    leftovers = [f"{p[2]}:{p[1]}" for p in lp.pairs
+                 if written.xpath(f"/config/devices/entry/device-group/entry[@name='{p[2]}']"
+                                  f"/{p[0]}/entry[@name='{p[1]}']")]
+    return Check("fase 0 sobre o original verdadeiro produz o mesmo XML; nenhuma cópia local "
+                 "remanescente", same and not leftovers,
+                 f"{len(lp.pairs)} cópias locais (grupo × DG); idêntico: {same}; "
+                 f"remanescentes: {leftovers[:5]}")
+
+
+def _rule_equivalence_check(original, final):
+    """Verificador independente: IP, porta e application de cada regra em cada DG."""
+    from panorama_cleanup.rule_equivalence import compare_rules, summary
+    from panorama_cleanup.xml_validator import Check
+    r = compare_rules(original, final)
+    return Check("independente: IPs, portas e applications das regras idênticos ao ORIGINAL",
+                 r.ok, summary(r))
+
+
 def run_apply(input_path: Path, plan_dir: Path, settings: Settings) -> int:
     """APPLY: fases 1-3 do plano aprovado em uma cópia; o original não é tocado."""
     from panorama_cleanup.safety import ensure_writable_target
@@ -413,10 +437,14 @@ def run_apply(input_path: Path, plan_dir: Path, settings: Settings) -> int:
     log.info("Run %s: entrada %s sha256=%s", ctx.run_id, ctx.input_path, ctx.input_sha256)
     try:
         original = parse_backup(ctx.input_path)
-        an = run_analysis(original)
-        plan_run, operations, copies = load_approved_plan(plan_dir, ctx, an)
+        lp = plan_with_localization(original)
+        an, base = lp.analysis, lp.tree
+        plan_run, operations, copies = load_approved_plan(plan_dir, ctx, lp)
         log.info("Plano aprovado: %s (%d operações)", plan_run, len(operations))
-        result = apply_plan(original, operations, copies)
+        # Fases 1-3 sobre a base com as cópias da fase 0; a mesma sequência aplicada ao
+        # original verdadeiro, com a fase 0, tem de produzir exatamente o mesmo XML.
+        result = apply_plan(base, operations, copies, phases=(1, 2, 3))
+        full = apply_plan(original, operations, copies, phases=(0, 1, 2, 3))
 
         xml_path = ensure_writable_target(
             settings.xml_output_dir / ctx.run_id / f"{ctx.input_path.stem}.shared.xml",
@@ -427,8 +455,10 @@ def run_apply(input_path: Path, plan_dir: Path, settings: Settings) -> int:
 
         # Valida o arquivo gravado, relido do disco.
         reread = parse_backup(xml_path)
-        checks, policy_rows, _ = validate_transformation(original, reread, result, operations)
+        checks, policy_rows, _ = validate_transformation(base, reread, result, operations)
         checks.append(_planned_references_check(plan_dir, result))
+        checks.append(_phase0_check(full.tree, reread, lp))
+        checks.append(_rule_equivalence_check(original, reread))
         verify_unchanged(ctx.input_path, ctx.input_sha256)
         for c in checks:
             (log.info if c.passed else log.error)("%s %s: %s", "OK" if c.passed else "FALHA",
@@ -501,8 +531,9 @@ def run_cleanup(input_path: Path, plan_dir: Path, from_run: Path, settings: Sett
     log.info("Run %s (cleanup): entrada %s sha256=%s", ctx.run_id, ctx.input_path, ctx.input_sha256)
     try:
         original = parse_backup(ctx.input_path)
-        an_original = run_analysis(original)
-        plan_run, operations, copies = load_approved_plan(plan_dir, ctx, an_original)
+        lp = plan_with_localization(original)
+        base = lp.tree
+        plan_run, operations, copies = load_approved_plan(plan_dir, ctx, lp)
         convert_run, converted_path, converted_sha, rule_renames = load_convert_run(
             from_run, ctx, plan_run)
         log.info("Plano %s; XML convertido %s (%s)", plan_run, converted_path, convert_run)
@@ -515,7 +546,7 @@ def run_cleanup(input_path: Path, plan_dir: Path, from_run: Path, settings: Sett
         # renomeado) não é confundida com alteração; qualquer mudança fora do plano
         # continua mantendo o objeto.
         from panorama_cleanup.inventory import build_inventory
-        expected = apply_plan(original, operations, copies).tree
+        expected = apply_plan(base, operations, copies, phases=(1, 2, 3)).tree
         planned_values = {r.xpath: r.value for r in build_inventory(expected).records}
         candidates = review_candidates(converted, an_converted, operations, planned_values,
                                        keep_types)
@@ -536,7 +567,8 @@ def run_cleanup(input_path: Path, plan_dir: Path, from_run: Path, settings: Sett
 
         final = parse_backup(xml_path)
         checks, policy_rows, _ = validate_transformation(converted, final, result, confirmed, phases=(4,))
-        checks += validate_end_to_end(original, final, rule_renames, result.deleted_xpaths)
+        checks += validate_end_to_end(base, final, rule_renames, result.deleted_xpaths)
+        checks.append(_rule_equivalence_check(original, final))
         verify_unchanged(ctx.input_path, ctx.input_sha256)
         verify_unchanged(converted_path, converted_sha)
         for c in checks:
@@ -608,8 +640,9 @@ def run_commands(input_path, plan_dir, convert_dir, cleanup_dir, settings) -> in
     log.info("Run %s (commands): entrada %s sha256=%s", ctx.run_id, ctx.input_path, ctx.input_sha256)
     try:
         original = parse_backup(ctx.input_path)
-        an = run_analysis(original)
-        plan_run, operations, _ = load_approved_plan(plan_dir, ctx, an)
+        lp = plan_with_localization(original)
+        an = lp.analysis
+        plan_run, operations, _ = load_approved_plan(plan_dir, ctx, lp)
         convert_run, converted_path, converted_sha, _ = load_convert_run(convert_dir, ctx, plan_run)
         cleanup_run, final_path, final_sha, deletions = load_cleanup_run(
             cleanup_dir, ctx, plan_run, convert_run)
@@ -618,10 +651,10 @@ def run_commands(input_path, plan_dir, convert_dir, cleanup_dir, settings) -> in
         api_ops = gen.build_api_ops(operations, deletions, converted, final, original)
         checks = []
         add = lambda n, ok, d: checks.append((n, bool(ok), d))  # noqa: E731
-        add("XML API fases 1-3 sobre o original = XML convertido",
+        add("XML API fases 0-3 sobre o original = XML convertido",
             gen.same_config(gen.simulate_xmlapi(original, [o for o in api_ops if o.phase < 4]), converted),
             "simulação set/edit/delete")
-        add("XML API fases 1-4 sobre o original = XML final",
+        add("XML API fases 0-4 sobre o original = XML final",
             gen.same_config(gen.simulate_xmlapi(original, api_ops), final), "simulação set/edit/delete")
         add("fase 4 = exclusões confirmadas na Etapa 6",
             sorted(o.xpath for o in api_ops if o.phase == 4) == sorted(d["xpath"] for d in deletions),
@@ -804,8 +837,8 @@ def run_validate(input_path, modified_path, plan_dir, convert_dir, cleanup_dir, 
     log.info("Run %s: original %s sha256=%s", ctx.run_id, ctx.input_path, ctx.input_sha256)
     try:
         original = parse_backup(ctx.input_path)
-        an = run_analysis(original)
-        plan_run, _, _ = load_approved_plan(plan_dir, ctx, an)
+        lp = plan_with_localization(original)
+        plan_run, _, _ = load_approved_plan(plan_dir, ctx, lp)
         convert_run, _, _, rule_renames = load_convert_run(convert_dir, ctx, plan_run)
         cleanup_run, final_path, final_sha, deleted = load_cleanup_run(
             cleanup_dir, ctx, plan_run, convert_run)
@@ -826,12 +859,20 @@ def run_validate(input_path, modified_path, plan_dir, convert_dir, cleanup_dir, 
                     local.append((r["source_xpath"], r["field"], r["old"], r["new"]))
                 elif r["applies_to"] == "cópia criada em Shared":
                     copies.setdefault(r["source_xpath"], []).append((r["field"], r["old"], r["new"]))
+        plan_ops = json.loads((Path(plan_dir) / "plan.json").read_text(encoding="utf-8"))["operations"]
+        descriptions = {o["xpath"]: o["value"] for o in plan_ops if o["operation"] == "SET_DESCRIPTION"}
         auth = Authorized(decisions, rule_renames, local, copies,
-                          {d["xpath"] for d in deleted}, tuple(cleanup_manifest.get("keep_types", ())))
+                          {d["xpath"] for d in deleted}, tuple(cleanup_manifest.get("keep_types", ())),
+                          descriptions)
 
         final = parse_backup(modified_path)
-        v = validate_final(original, final, auth,
+        # Base: original + cópias locais da fase 0 (transparentes); as verificações de
+        # estrutura e origem dos objetos seguem o plano. A verificação independente de
+        # IP, porta e application é feita contra o ORIGINAL verdadeiro.
+        v = validate_final(lp.tree, final, auth,
                            ignore_sections=("/config/readonly",) if exported else ())
+        eq = _rule_equivalence_check(original, final)
+        v.add("independente", eq.name, eq.passed, eq.detail)
         verify_unchanged(ctx.input_path, ctx.input_sha256)
         verify_unchanged(modified_path, modified_sha)
         for area, name, ok, detail in v.checks:

@@ -25,8 +25,14 @@ class Check:
 
 
 def _remaining_group_diffs(an_before, an_after, before, after) -> tuple:
-    """Grupos presentes antes e depois (mesmo xpath): valor efetivo por firewall."""
-    from panorama_cleanup.effective_model import compare_objects
+    """Grupos presentes antes e depois (mesmo xpath): valor efetivo por firewall.
+
+    Compara nos contextos onde alguma regra alcança o grupo (used_contexts) e onde ele
+    não está sombreado. Mudança de valor num DG onde nenhuma regra usa o grupo (efeito
+    de retirar do DG o objeto local que o sobrepunha) é informada, não reprovada: não
+    chega a regra nenhuma.
+    """
+    from panorama_cleanup.effective_model import compare_objects, used_contexts
     after_index = {r.xpath: i for i, r in enumerate(an_after.inventory.records)}
     after_by_key = {o.key: o for o in after.objects}
     pairs = []
@@ -34,10 +40,24 @@ def _remaining_group_diffs(an_before, an_after, before, after) -> tuple:
         xpath = an_before.inventory.records[o.key].xpath
         if o.leaf is None and xpath in after_index:
             pairs.append((o, after_by_key[after_index[xpath]]))
-    diffs = compare_objects(before, after, pairs)
+    used = used_contexts(an_before.graph)
+    diffs = compare_objects(before, after, pairs, used=used)
+    unused_changes = [d for d in compare_objects(before, after, pairs)
+                      if (d[1].key, d[0]) not in used]
     checked = sum(len(before.firewall_contexts(o.scope)) for o, _ in pairs)
     sample = [f"{o.scope}:{o.name} em {ctx}" for ctx, o, *_ in diffs[:5]]
-    return diffs, f"{checked} verificações (grupo × DG); {len(diffs)} diferenças {sample}"
+    info = [f"{o.scope}:{o.name} em {ctx}" for ctx, o, *_ in unused_changes[:5]]
+    return diffs, (f"{checked} verificações (grupo × DG); {len(diffs)} diferenças em contexto "
+                   f"usado por regra {sample}; informativo: {len(unused_changes)} grupo × DG sem "
+                   f"regra que o use mudaram de valor no DG {info}")
+
+
+def _set_text_child(el, tag, text):
+    child = el.find(tag)
+    if child is None:
+        child = copy.deepcopy(el.makeelement(tag, {}))
+        el.append(child)
+    child.text = text
 
 
 def validate_transformation(original, transformed, result, operations, phases=(1, 2, 3)) -> tuple:
@@ -68,6 +88,12 @@ def validate_transformation(original, transformed, result, operations, phases=(1
     for xpath, field_path, old, new in result.object_renames:
         (el,) = expected.xpath(xpath)
         replace_reference(el, field_path, old, new)
+    created = {x for x, _ in result.created_xpaths}
+    for xpath, text in result.descriptions:
+        if xpath in created:
+            continue
+        (el,) = expected.xpath(xpath)
+        _set_text_child(el, "description", text)
     actual = copy.deepcopy(transformed)
     for xpath, _ in result.created_xpaths:
         (el,) = actual.xpath(xpath)
@@ -92,6 +118,9 @@ def validate_transformation(original, transformed, result, operations, phases=(1
         expected_entry.set("name", new.get("name"))
         for field_path, old, new_name in result.copy_member_renames.get(source_xpath, ()):
             replace_reference(expected_entry, field_path, old, new_name)
+        for xpath, text in result.descriptions:
+            if xpath == created_xpath:
+                _set_text_child(expected_entry, "description", text)
         if canonical(expected_entry) != canonical(new):
             bad.append(created_xpath)
     add("cópias em Shared idênticas aos originais (valor, tags, descrição)", not bad,
@@ -117,7 +146,7 @@ def validate_transformation(original, transformed, result, operations, phases=(1
     add("valor efetivo idêntico em todos os firewalls", not diffs,
         f"{checked} verificações (referência de regra × DG); {len(diffs)} diferenças")
     group_diffs, detail = _remaining_group_diffs(an_before, an_after, before, after)
-    add("valor efetivo dos grupos remanescentes idêntico em todos os firewalls (inclui sem uso)",
+    add("valor efetivo dos grupos remanescentes idêntico em todo DG onde uma regra os usa",
         not group_diffs, detail)
 
     refs_after = {(r.source_xpath, r.field, r.value) for r in rule_refs_from_graph(an_after.graph)}
@@ -174,7 +203,7 @@ def validate_end_to_end(original, final, rule_renames: dict, deleted_xpaths: lis
         f"{sum(len(before.firewall_contexts(r.source_scope)) for r in refs)} verificações; "
         f"{len(diffs)} diferenças")
     group_diffs, detail = _remaining_group_diffs(an_before, an_after, before, after)
-    add("ponta a ponta: valor efetivo dos grupos remanescentes idêntico (inclui sem uso)",
+    add("ponta a ponta: valor efetivo dos grupos remanescentes idêntico onde uma regra os usa",
         not group_diffs, detail)
 
     status = {r.xpath: an_before.usage[i].status for i, r in enumerate(an_before.inventory.records)}

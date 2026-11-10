@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!-- Fictício. Reproduz o caso Site_REC: service "389" local diferente do de Shared
-     (CONFLICT -> RENAME_MOVE 389_DG-REC), usado por regra do DG; o 389 de Shared é
+     (CONFLICT -> RENAME_MOVE 389-tcp-389), usado por regra do DG; o 389 de Shared é
      usado pelo DG-OUTRO; grupo local PT_TCP_AD
      sem uso (DELETE_UNUSED) com membro 389. Entre as fases 3 e 4 o grupo continua no
      DG, então o membro precisa ser atualizado na fase 2. -->

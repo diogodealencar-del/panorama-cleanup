@@ -53,7 +53,7 @@ def test_apply_writes_new_xml_and_keeps_original(setup):
     xml = m["output_xml"]["path"]
     assert xml.startswith(str(project.xml_output_dir)) and sha256_file(xml) == m["output_xml"]["sha256"]
     tree = parse_backup(xml)
-    assert tree.xpath("/config/shared/address/entry[@name='SHADOW_DG-RJ']")
+    assert tree.xpath("/config/shared/address/entry[@name='SHADOW-10.0.0.99']")
 
 
 def test_apply_refuses_tampered_plan(setup):
@@ -98,7 +98,7 @@ def test_cleanup_generates_final_xml(setup):
     out = newest()
     assert {p.name for p in out.iterdir()} == CLEANUP_REPORTS
     m = json.loads((out / "manifest.json").read_text())
-    assert m["status"] == "ok" and m["deleted"] == 16 and m["kept"] == 0
+    assert m["status"] == "ok" and m["deleted"] == 18 and m["kept"] == 0
     assert m["checks_passed"] == m["checks_total"]
     assert sha256_file(converted["path"]) == converted["sha256"]
     final = parse_backup(m["output_xml"]["path"])

@@ -122,7 +122,7 @@ Qualquer divergência interrompe a análise.
 
 ## D18. Nomes gerados (Etapa 4)
 
-Formato `NOME_ORIGINAL_DEVICEGROUP` (CLAUDE.md §6). Limite de 63 caracteres, conforme [Create an Address Object (PAN-OS 11.1)](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/policy/use-address-object-to-represent-ip-addresses/create-an-address-object) e [Objects > Address Groups](https://docs.paloaltonetworks.com/ngfw/help/11-1/objects/objects-address-groups). O limite é aplicado a todos os tipos renomeáveis. O sufixo usa só caracteres permitidos (letras, números, `_`, `-`). O nome original é mantido como está, já que o PAN-OS o aceitou.
+Desde a 0.3.0: `NOME-IP`, `NOME-REDE-MÁSCARA`, `NOME-INICIO-FIM`, `NOME-FQDN` e `NOME-PROTOCOLO-PORTA` para address e service; `NOME_DEVICEGROUP` para grupos e demais tipos (CLAUDE.md §6, `naming.py`). Nome inválido (por exemplo IPv6, cujos `:` não são aceitos) fica PENDING_DECISION. Se o nome novo coincidir com outra cópia de mesmo valor, ou com um objeto de Shared de mesmo valor, a cópia é consolidada nele (CONSOLIDATE com renomeação das referências do DG); com valor diferente, PENDING_DECISION. Limite de 63 caracteres, conforme [Create an Address Object (PAN-OS 11.1)](https://docs.paloaltonetworks.com/pan-os/11-1/pan-os-admin/policy/use-address-object-to-represent-ip-addresses/create-an-address-object) e [Objects > Address Groups](https://docs.paloaltonetworks.com/ngfw/help/11-1/objects/objects-address-groups). O limite é aplicado a todos os tipos renomeáveis. O sufixo usa só caracteres permitidos (letras, números, `_`, `-`). O nome original é mantido como está, já que o PAN-OS o aceitou.
 
 O nome é recusado (PENDING_DECISION) se passar do limite ou se já existir na mesma família de nomes (address/address-group, service/service-group, application/-group/-filter) em qualquer escopo, ou no próprio plano. Nada é truncado. No backup, o maior nome gerado tem 53 caracteres.
 
@@ -145,7 +145,9 @@ Regras de decisão:
 
 ## D20. Descrições em consolidações
 
-Uma cópia unificada perde a descrição local; vale a do objeto mantido. Descrição não altera comportamento do firewall, mas é perda de informação. Cada caso está em `deleted-objects.csv` (coluna `notes`) e depende de aceite explícito.
+Desde a 0.3.0 (regra 3 do usuário): se o objeto mantido e a cópia tiverem descrição, fica a do objeto mantido; se só a cópia tiver, ela é copiada para o objeto mantido na fase 1 (`SET_DESCRIPTION`), antes de a cópia ser excluída na fase 3. Com várias cópias, vale a primeira por ordem de DG e nome. Descrição não altera comportamento; as Etapas 5 e 8 só aceitam a descrição que o plano lista.
+
+Também desde a 0.3.0: cópia local **sem uso** idêntica a um objeto de Shared de mesmo nome que continua existindo é consolidada nele (fase 3) em vez de esperar a exclusão de não utilizados.
 
 ## D21. Aplicação do plano (Etapa 5)
 
@@ -238,3 +240,20 @@ Qualquer falha resulta em NÃO APROVADO, e o modo termina com código 1.
 
 - **Testes de política:** `policy_tests.py` gera `test security-policy-match` / `test nat-policy-match` para as regras com referência renomeada e para até 40 regras por DG que usam objetos consolidados ou movidos, nos contextos de firewall de cada DG. O método é comparar a saída antes e depois, sem prever resultado. A sintaxe é conferida contra a hierarquia operacional 11.1 (firewall), aceitando subconjuntos dos parâmetros documentados na ordem documentada.
 - **`validate --exported`:** valida um XML exportado do Panorama após a implantação. Dispensa o sha256 do XML gerado e exclui da comparação apenas `/config/readonly`, cujos IDs o Panorama mantém (D23). Todo o resto segue as 24 verificações.
+
+## D28. Fase 0: cópia local de grupos de Shared que variam por DG (0.3.0)
+
+Um grupo de Shared com membro X vale outra coisa nos firewalls de um DG que tem X local (D13). Esse X local não podia ser renomeado (a regra do DG passaria a usar o X de Shared) e ficava no DG. `localization.py` cria, na fase 0, uma cópia idêntica do grupo nesse DG: no DG o nome passa a resolver para a cópia, com o mesmo valor. A cópia vai para Shared como `GRUPO_DG` (sempre com nome próprio, nunca consolidada no grupo de origem), as regras do DG passam a usá-la, e o X fica livre para ir a Shared como `X-IP`. O grupo de Shared original não muda. Só ficam as cópias que o plano consegue mover; o planejamento é refeito até estabilizar, e o XML final nunca contém cópias da fase 0.
+
+Não há cópia quando uma regra de Shared usa o grupo: a mesma regra vale em todos os DGs e não pode apontar para nomes diferentes por DG sem alterar a regra.
+
+Ajustes no planejador e no simulador que acompanham a fase 0:
+- referência de um objeto de outro escopo que, no contexto, está sombreado por uma cópia local, ou que nenhuma regra alcança naquele contexto (`used_contexts`), não impede renomear o alvo;
+- grupos remanescentes de Shared são comparados nos DGs onde alguma regra os usa; objetos de DG continuam comparados sempre no próprio DG, com ou sem uso;
+- cópia consolidada cujo membro seria renomeado passa a RENAME_MOVE (não há onde aplicar a troca).
+
+A Etapa 5 prova que fases 0-3 sobre o original verdadeiro produzem exatamente o XML gravado; a Etapa 7 simula a XML API das fases 0-4 sobre o original.
+
+## D29. Verificador independente de regras (0.3.0)
+
+`rule_equivalence.py` compara o XML original verdadeiro com o XML gerado, regra a regra, em cada DG onde a regra vale: IPs de origem e destino (address e address-group estáticos e dinâmicos, recursivos), portas (service e service-group), applications (grupos e customizadas), negate, endereços traduzidos de NAT e next-hop de PBF, além do mesmo conjunto, ordem e UUID das regras. Não usa inventário, analisador, planejador nem simulador (só lxml), para que um defeito no modelo de planejamento não aprove o próprio resultado. É bloqueio nas Etapas 5, 6 e 8.
