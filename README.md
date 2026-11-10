@@ -87,7 +87,7 @@ panorama-cleanup plan --stage commands --input input/<backup>.xml --plan <run pl
 | `apply` | cópia do XML | Aplica o plano em uma cópia; nunca altera o original |
 | `validate` | só relatórios | Compara original e modificado |
 
-Nenhum modo executa o seguinte automaticamente. A ferramenta não acessa o Panorama nem faz commit ou push.
+Cada etapa deve ser iniciada manualmente; nenhum modo inicia a próxima etapa automaticamente. A ferramenta não acessa o Panorama nem faz commit ou push.
 
 ## Estrutura
 
