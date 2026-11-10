@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -100,12 +103,24 @@ def test_api_ops_reproduce_converted_and_final():
 def test_runner_dry_run_sends_nothing(tmp_path):
     from panorama_cleanup.generate_cli import RUNNER
 
+    bash = shutil.which("bash")
+    if os.name == "nt":
+        git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git/bin/bash.exe"
+        if git_bash.is_file():
+            bash = str(git_bash)
+    assert bash, "Install Bash to verify the generated runner"
+    environment = {"PATH": "/usr/bin:/bin"}
+    if os.name == "nt":
+        environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+        environment["PATH"] = str(Path(bash).parent) + os.pathsep + environment["PATH"]
     runner = tmp_path / "run-xmlapi.sh"
-    runner.write_text(RUNNER)
+    runner.write_text(RUNNER, encoding="utf-8", newline="\n")
     tsv = tmp_path / "ops.tsv"
-    tsv.write_text("seq\tphase\taction\txpath\telement\n1\t1\tdelete\t/config/shared/address/entry[@name='X']\t\n")
-    result = subprocess.run(["bash", str(runner), str(tsv)], capture_output=True, text=True,
-                            env={"PATH": "/usr/bin:/bin"})
+    tsv.write_text("seq\tphase\taction\txpath\telement\n1\t1\tdelete\t/config/shared/address/entry[@name='X']\t\n", encoding="utf-8", newline="\n")
+    result = subprocess.run([bash, str(runner), str(tsv)], capture_output=True, text=True,
+                            encoding="utf-8", env=environment)
+    if os.name == "nt" and "NtCreateDirectoryObject" in result.stderr and "0xC0000022" in result.stderr:
+        pytest.skip("Windows sandbox denies the named objects required by Git Bash")
     assert result.returncode == 0
     assert "nada será enviado" in result.stdout
-    assert subprocess.run(["bash", "-n", str(runner)]).returncode == 0
+    assert subprocess.run([bash, "-n", str(runner)]).returncode == 0
