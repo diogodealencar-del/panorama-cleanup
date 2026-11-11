@@ -33,3 +33,9 @@ py -3.12 -m venv .venv
 A compilação executa a suíte de testes, cria os dois executáveis e verifica a abertura da interface, o fluxo de inventário até validação com um XML sintético, o comparativo e o inventário pela CLI. Os arquivos ficam em `dist/windows/`, acompanhados de `build-info.json`, checksums e licenças.
 
 `build-info.json` registra o commit, a versão do motor, as bibliotecas, os checksums dos executáveis e os testes do pacote. Um executável sem assinatura digital pode receber um aviso do Windows. Os checksums permitem conferir a integridade do download.
+
+## Publicar no GitHub
+
+O workflow `Executaveis Windows` testa e compila o código em um runner Windows, guarda os resultados e publica uma release `vVERSAO-windows.1` com os dois executáveis, o ZIP e os checksums. Ele é acionado por um push em uma branch `build/windows-v*` ou manualmente pela página de Actions. A publicação usa o token temporário da execução, sem solicitar credenciais aos usuários do aplicativo.
+
+Para publicar uma compilação local, execute `PUBLICAR-GITHUB.cmd` na raiz do clone, com sua conta autenticada no Git. O publicador verifica o commit e os checksums antes do envio e não substitui anexos existentes por outros arquivos.
