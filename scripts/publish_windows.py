@@ -92,7 +92,10 @@ def main():
     release = api(token, API + "/releases/tags/" + urllib.parse.quote(tag, safe=""))
     if release and release["target_commitish"] != commit:
         raise RuntimeError("A release existente identifica outro commit. Escolha outra tag.")
-    push(token, "HEAD:refs/heads/build/windows-v" + info["version"])
+    # Local uploads use a separate branch so the push cannot start a second
+    # build competing to upload different binaries to this same release.
+    prefix = "build" if os.environ.get("GITHUB_ACTIONS") == "true" else "source"
+    push(token, "HEAD:refs/heads/" + prefix + "/windows-v" + info["version"])
     if not existing_tags:
         git("tag", tag, commit)
     push(token, "refs/tags/" + tag)

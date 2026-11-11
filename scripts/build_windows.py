@@ -87,6 +87,8 @@ def smoke(gui, cli):
         run([cli, "--workdir", cli_root, "inventory", "--input", fixture], timeout=120,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         evidence["cli_inventory"] = len(list((cli_root / "output" / "reports").glob("*/manifest.json"))) == 1
+        if not evidence["cli_inventory"]:
+            raise RuntimeError("Packaged CLI did not produce an inventory manifest")
     return evidence
 
 

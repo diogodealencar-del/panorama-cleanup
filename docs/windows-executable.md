@@ -38,4 +38,4 @@ A compilação executa a suíte de testes, cria os dois executáveis e verifica 
 
 O workflow `Executaveis Windows` testa e compila o código em um runner Windows, guarda os resultados e publica uma release `vVERSAO-windows.1` com os dois executáveis, o ZIP e os checksums. Ele é acionado por um push em uma branch `build/windows-v*` ou manualmente pela página de Actions. A publicação usa o token temporário da execução, sem solicitar credenciais aos usuários do aplicativo.
 
-Para publicar uma compilação local, execute `PUBLICAR-GITHUB.cmd` na raiz do clone, com sua conta autenticada no Git. O publicador verifica o commit e os checksums antes do envio e não substitui anexos existentes por outros arquivos.
+Para publicar uma compilação local, execute `PUBLICAR-GITHUB.cmd` na raiz do clone, com sua conta autenticada no Git. O publicador verifica o commit e os checksums antes do envio e não substitui anexos existentes por outros arquivos. O código é enviado a uma branch `source/windows-vVERSAO`, que não dispara uma segunda compilação durante o upload local.
