@@ -280,6 +280,29 @@ def test_planning_does_not_modify_xml():
     assert path.read_bytes() == before
 
 
+def test_security_profiles_and_groups_are_never_touched(write):
+    # Security Profile Group e Security Profile (virus) idênticos, duplicados e sem uso
+    # em DG-A e em Shared: continuariam sendo candidatos normais a CONSOLIDATE/DELETE_UNUSED
+    # se não fossem excluídos explicitamente (CLAUDE.md §3 / pedido do usuário, 13/11/2026).
+    profile_group = ('<profile-group><entry name="SG-A">'
+                      '<virus><member>AV-A</member></virus></entry></profile-group>')
+    profiles_virus = '<profiles><virus><entry name="AV-A"><decoder/></entry></virus></profiles>'
+    path = write(panorama({
+        "DG-A": profile_group + profiles_virus,
+    }, shared=profile_group + profiles_virus))
+    an, plan = analyze(path)
+    dg_group = decision(an, plan, "DG-A", "SG-A", "profile-group")
+    dg_virus = decision(an, plan, "DG-A", "AV-A", "profiles/virus")
+    sh_group = decision(an, plan, "shared", "SG-A", "profile-group")
+    sh_virus = decision(an, plan, "shared", "AV-A", "profiles/virus")
+    assert dg_group.action == KEEP_LOCAL and "Security Profile" in dg_group.reason
+    assert dg_virus.action == KEEP_LOCAL and "Security Profile" in dg_virus.reason
+    assert sh_group.action == KEEP and "Security Profile" in sh_group.reason
+    assert sh_virus.action == KEEP and "Security Profile" in sh_virus.reason
+    for op in operation_sequence(an.inventory, plan):
+        assert op["object_type"] not in ("profile-group",) and not op["object_type"].startswith("profiles/")
+
+
 def test_consolidation_compares_value_in_consumer_context(write):
     # Iguais no próprio escopo, diferentes nos firewalls do DG: o grupo de Shared
     # resolveria o membro M para a cópia local de M no DG-A.

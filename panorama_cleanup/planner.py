@@ -50,9 +50,19 @@ CHANGES = (MOVE, RENAME_MOVE, CONSOLIDATE, DELETE_UNUSED)
 
 MOVABLE_TYPES = frozenset({
     "address", "address-group", "service", "service-group", "tag", "application",
-    "application-group", "application-filter", "schedule", "external-list", "profile-group",
+    "application-group", "application-filter", "schedule", "external-list",
     "log-settings/profiles",
 })
+# Security Profiles e Security Profile Groups nunca são movidos, renomeados, consolidados
+# ou excluídos por não uso, em Shared ou em qualquer Device Group (CLAUDE.md §3: "Alterar
+# Security Profiles" é proibido; requisito explícito do usuário, 13/11/2026). A decisão é
+# sempre KEEP/KEEP_LOCAL, independente de duplicidade ou status de utilização.
+NEVER_TOUCH_TYPES_PREFIX = "profiles/"
+NEVER_TOUCH_TYPES = frozenset({"profile-group"})
+
+
+def _never_touch(object_type: str) -> bool:
+    return object_type in NEVER_TOUCH_TYPES or object_type.startswith(NEVER_TOUCH_TYPES_PREFIX)
 # PAN-OS 11.1: até 63 caracteres para nomes de address e address group
 # (docs/arquitetura.md, D18). Aplicado a todos os tipos renomeáveis.
 NAME_LIMIT = 63
@@ -186,12 +196,21 @@ class _Planner:
         for i, rec in enumerate(inv.records):
             status = usage[i].status
             if rec.scope == SHARED:
-                if status == "UNUSED":
+                if _never_touch(rec.object_type):
+                    decisions[i] = Decision(i, KEEP, SHARED, rec.name, -1,
+                                            "Security Profile / Security Profile Group: nunca "
+                                            "excluído por não uso (CLAUDE.md §3)")
+                elif status == "UNUSED":
                     decisions[i] = Decision(i, DELETE_UNUSED, "", "", -1, usage[i].reason)
                 else:
                     decisions[i] = Decision(i, KEEP, SHARED, rec.name, -1, "já em Shared")
                 continue
-            movable = rec.object_type in MOVABLE_TYPES or rec.object_type.startswith("profiles/")
+            if _never_touch(rec.object_type):
+                decisions[i] = Decision(i, KEEP_LOCAL, rec.scope, rec.name, -1,
+                                        "Security Profile / Security Profile Group: nunca movido, "
+                                        "renomeado, consolidado ou excluído (CLAUDE.md §3)")
+                continue
+            movable = rec.object_type in MOVABLE_TYPES
             if not rec.recognized or not movable:
                 decisions[i] = Decision(i, KEEP_LOCAL, rec.scope, rec.name, -1,
                                         f"tipo {rec.object_type} fora do escopo de centralização")
@@ -521,7 +540,7 @@ class _Planner:
 
 TYPE_ORDER = ("tag", "address", "service", "application", "application-filter", "schedule",
               "external-list", "log-settings/profiles", "address-group", "service-group",
-              "application-group", "profile-group")
+              "application-group")
 
 
 def operation_sequence(inv, plan) -> list:
