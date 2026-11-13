@@ -41,3 +41,7 @@ dist/
 panorama-lab-key
 *.key
 .panorama-*-key
+
+# Registros de execução por backup (dados do cliente; ficam só na máquina)
+docs/etapa-*-*.md
+docs/etapas-*.md
