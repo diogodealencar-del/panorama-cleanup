@@ -28,6 +28,7 @@ Runs substituídos, que não devem ser usados: `<listar>`.
 
 | Fase | Arquivo | Operações |
 |---|---|---|
+| 0 | `05-fase0-copias-locais.tsv` | <N0> cópias locais temporárias de grupos de Shared (só se o arquivo existir; removidas na fase 3) |
 | 1 | `10-fase1-criar-shared.tsv` | <N1> criações em Shared |
 | 2 | `20-fase2-atualizar-referencias.tsv` | <N2> edições (<n> referências em <n> regras e <n> grupos locais) |
 | 3 | `30-fase3-excluir-copias-locais.tsv` | <N3> exclusões de cópias locais |
@@ -71,11 +72,12 @@ Ambiente: Panorama de laboratório com PAN-OS **<detail-version>**, a mesma deta
 
 | # | Ação | Comando / caminho | Resultado esperado |
 |---|---|---|---|
-| A1 | Carregar o backup original no laboratório | Interface web: Panorama > Setup > Operations > **Import named Panorama configuration snapshot** (arquivo `<backup>.xml`), depois **Load named Panorama configuration snapshot**, depois **Commit to Panorama** | Commit concluído sem erro; candidate = running |
-| A2 | Linha de base de conferência | Rodar `01-precheck.md` contra o laboratório | Plano recalculado idêntico ao aprovado |
-| A3 | Aplicar as fases 1 a 4 | `CONFIRM_EXECUTE=yes PANORAMA_HOST=<lab> PANORAMA_API_KEY=<chave> ./run-xmlapi.sh 10-fase1-criar-shared.tsv` e o mesmo para `20-…`, `30-…`, `40-…`, na ordem | `Concluído: N de N operações` em cada arquivo, sem `FALHA`. Log `.log` gerado ao lado de cada `.tsv` |
-| A4 | Validar no equipamento | Commit > **Preview Changes**, **Change Summary**, **Validate Changes**. XML API: `type=commit&action=all&cmd=<commit-all><shared-policy><validate-only></validate-only></shared-policy></commit-all>` | Nenhum erro de validação; o Preview mostra apenas objetos e as <n> regras com membros trocados |
-| A5 | Validar com a ferramenta | Save named Panorama configuration snapshot e Export named Panorama configuration snapshot (candidate). Depois, na estação: `panorama-cleanup --workdir "$W" validate --exported --input $W/input/<backup>.xml --modified <exportado>.xml --plan $W/output/reports/<run plan> --convert-run $W/output/reports/<run apply> --cleanup-run $W/output/reports/<run apply-cleanup>` | **APROVADO** (`--exported` ignora apenas `/config/readonly`, cujos IDs o Panorama mantém) |
+| A0 | Proteger o laboratório | **Save named Panorama configuration snapshot** `lab-antes-teste` e exportar a running do lab (`type=export&category=configuration`) para a estação | Snapshot salvo; arquivo local com sha256 registrado |
+| A1 | Carregar o backup original no laboratório **sem a gerência de produção** | **Não** use Load named snapshot do arquivo inteiro: o backup traz IP de gerência, HA e administradores da produção, e o commit faria o laboratório assumir o IP da produção e perder o acesso. Importe o arquivo (**Import named Panorama configuration snapshot** ou `type=import&category=configuration`) e carregue só as seções de objetos e políticas, em modo configure: `load config partial mode replace from-xpath <seção> to-xpath /config/<seção> from <backup>.xml` para `shared`, `devices/entry[@name='localhost.localdomain']/template`, `…/template-stack` e `…/device-group` (XML API: `type=op`, `<load><config><partial><from>…</from><from-xpath>…</from-xpath><to-xpath>…</to-xpath><mode>replace</mode></partial></config></load>`). Conferir que `mgt-config` e `deviceconfig` continuam os do laboratório; depois **Commit to Panorama** (sem push) | Commit concluído; acesso ao laboratório mantido. O Panorama pode gerar UUIDs novos para as regras carregadas |
+| A2 | Linha de base de conferência | Exportar a running do laboratório e rodar `inventory`, `analyze` e `plan` sobre ela numa pasta de trabalho própria do laboratório (`01-precheck.md`) | Lista `operations` do `plan.json` **idêntica** à do plano aprovado. Gerar `apply`, `apply --stage cleanup` (mesmos `--keep-type`) e `plan --stage commands` sobre essa base: são os `.tsv` usados no laboratório |
+| A3 | Aplicar as fases 0 a 4 | `CONFIRM_EXECUTE=yes PANORAMA_HOST=<lab> PANORAMA_API_KEY=<chave> ./run-xmlapi.sh 05-fase0-copias-locais.tsv` (se existir) e o mesmo para `10-…`, `20-…`, `30-…`, `40-…`, na ordem. Ao encadear arquivos num laço, teste o código de saída do próprio `run-xmlapi.sh` (não o de um `| grep`) e pare no primeiro diferente de zero | `Concluído: N de N operações` em cada arquivo, sem `FALHA`. Log `.log` gerado ao lado de cada `.tsv` |
+| A4 | Validar no equipamento | Commit > **Preview Changes**, **Change Summary**, **Validate Changes**. XML API do Validate Changes: `type=op&cmd=<validate><full></full></validate>` e acompanhar o job. Validate Device Group Push: ver `50-validacao.md` (sem firewall conectado ao laboratório, o resultado por firewall é `not connected` e não conclui nada) | "Configuration is valid"; o Preview mostra apenas objetos e as <n> regras com membros trocados |
+| A5 | Validar com a ferramenta | Exportar o candidate: Save + Export named Panorama configuration snapshot, ou XML API `type=config&action=get&xpath=/config` (extrair o elemento `<config>` da resposta). Depois, na estação: `panorama-cleanup --workdir "$W_LAB" validate --exported --input <running do lab em A2>.xml --modified <candidate exportado>.xml --plan … --convert-run … --cleanup-run …` (runs de A2) | **APROVADO** (`--exported` ignora `/config/readonly`, cujos IDs o Panorama mantém, e `/config/predefined`, conteúdo embutido que só aparece na leitura por `action=get`) |
 | A6 | (Só se a CLI for usada) Validar a sintaxe CLI 11.1 | No laboratório, com o XML final carregado: `set cli config-output-format set` (operacional), `configure`, `show shared address`, `show device-group <DG-n> address-group` etc. | Linhas exibidas iguais às dos `.cli` |
 | A7 | Commit no laboratório | **Commit to Panorama** | Commit concluído; `readonly` atualizado pelo próprio Panorama |
 | A8 | Push de teste (se houver firewall de laboratório) | Push to Devices para o DG de laboratório. No firewall: `show config pushed-shared-policy` e os comandos de `80-testes-de-politica.cli`, comparando com a linha de base tirada antes do push | Saídas idênticas |
@@ -106,7 +108,8 @@ A homologação só é aprovada com A3, A4, A5, A7 e A9 concluídos sem divergê
 
 | # | Ação | Comando | Resultado esperado |
 |---|---|---|---|
-| B2.1 | Fase 1 | `CONFIRM_EXECUTE=yes PANORAMA_HOST=<prod> PANORAMA_API_KEY=<chave> PANORAMA_CA_CERT=<pem> ./run-xmlapi.sh 10-fase1-criar-shared.tsv` | `Concluído: <N1> de <N1>` |
+| B2.0 | Fase 0 (só se `05-fase0-copias-locais.tsv` existir) | `CONFIRM_EXECUTE=yes PANORAMA_HOST=<prod> PANORAMA_API_KEY=<chave> PANORAMA_CA_CERT=<pem> ./run-xmlapi.sh 05-fase0-copias-locais.tsv` | `Concluído: <N0> de <N0>` |
+| B2.1 | Fase 1 | `./run-xmlapi.sh 10-fase1-criar-shared.tsv` (mesmas variáveis) | `Concluído: <N1> de <N1>` |
 | B2.2 | Fase 2 | `./run-xmlapi.sh 20-fase2-atualizar-referencias.tsv` (mesmas variáveis) | `Concluído: <N2> de <N2>` |
 | B2.3 | Fase 3 | `./run-xmlapi.sh 30-fase3-excluir-copias-locais.tsv` | `Concluído: <N3> de <N3>` |
 | B2.4 | Fase 4 (opcional nesta janela) | `./run-xmlapi.sh 40-fase4-excluir-nao-utilizados.tsv` | `Concluído: <N4> de <N4>` |
@@ -120,7 +123,7 @@ Se a fase 4 ficar para outra janela, a validação B3.3 deve usar o run da Etapa
 | # | Ação | Comando / caminho | Resultado esperado |
 |---|---|---|---|
 | B3.1 | Prévia | Commit > **Preview Changes** e **Change Summary** | Só objetos e as <n> regras com troca de membro; nenhuma regra criada, removida ou movida |
-| B3.2 | Validação do Panorama | **Validate Changes** e **Validate Device Group Push** (<todos os DGs afetados>). API: `commit-all` `validate-only` (ver `50-validacao.md`) | Sem erros |
+| B3.2 | Validação do Panorama | **Validate Changes** (API: `type=op&cmd=<validate><full></full></validate>`) e **Validate Device Group Push** (<todos os DGs afetados>; API: `commit-all` com `<validate-only>yes</validate-only>`, ver `50-validacao.md`) | "Configuration is valid"; push validado sem erro em cada firewall |
 | B3.3 | Validação da ferramenta | Exportar o candidate (Save + Export named snapshot) e rodar `validate --exported` como em A5 | **APROVADO** |
 | B3.4 | **Go / No-go** | Revisor e aprovador conferem B3.1 a B3.3 | Go registrado. No-go: R1 |
 

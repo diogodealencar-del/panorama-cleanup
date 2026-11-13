@@ -36,3 +36,8 @@ docs/procedimento-uso-da-ferramenta.pdf
 
 # Skill gerada (scripts/build_skill.py)
 dist/
+
+# Chaves de API / credenciais (nunca versionar)
+panorama-lab-key
+*.key
+.panorama-*-key

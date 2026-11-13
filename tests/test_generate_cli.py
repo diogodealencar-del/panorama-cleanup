@@ -143,3 +143,32 @@ def test_readme_order_lists_every_phase_file(counts, expected):
     assert "60-commit-e-push.md" in rows[-1]
     if counts[0]:
         assert f"| `05-fase0-copias-locais.tsv` / `.cli` | {counts[0]} |" in readme
+
+
+def test_validation_doc_uses_validate_only_yes_and_lists_dgs():
+    """Regressão: <validate-only></validate-only> vazio é recusado pelo Panorama 11.1."""
+    from panorama_cleanup.generate_cli import documents
+
+    meta = _Meta(device_groups=["DG-RJ", 'DG "X"'], containers=[])
+    doc = documents(meta, {0: 0, 1: 1, 2: 1, 3: 1, 4: 1, 5: 0})["50-validacao.md"]
+    assert "<validate-only></validate-only>" not in doc.split("A forma vazia", 1)[0]
+    assert ("<commit-all><shared-policy><validate-only>yes</validate-only><device-group>"
+            '<entry name="DG-RJ"/><entry name="DG &quot;X&quot;"/></device-group>'
+            "</shared-policy></commit-all>") in doc
+    assert "type=op&cmd=<validate><full></full></validate>" in doc
+
+
+def test_stage9_template_lists_every_phase_file():
+    """Regressão: o modelo da Etapa 9 omitia a fase 0 em A3 e B2."""
+    from panorama_cleanup.generate_cli import PHASE_FILES
+    from tests.conftest import PROJECT_ROOT
+
+    text = (PROJECT_ROOT / "docs" / "modelo-etapa-09.md").read_text(encoding="utf-8")
+    lab = next(line for line in text.splitlines() if line.startswith("| A3 |"))
+    prod = "\n".join(line for line in text.splitlines() if line.startswith("| B2."))
+    for key, stem, _ in PHASE_FILES:
+        if key == 5:
+            continue  # tags: nunca removidas (docs/arquitetura.md)
+        assert f"{stem}.tsv" in prod, stem
+        assert (f"{stem}.tsv" if key == 0 else f"`{stem[:3]}…`") in lab, stem
+    assert "<validate-only></validate-only>" not in text

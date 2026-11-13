@@ -22,6 +22,7 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import dataclass
+from xml.sax.saxutils import escape
 
 from lxml import etree
 
@@ -497,6 +498,8 @@ echo "Concluído: $DONE de $TOTAL operações de $FILE. Log: $LOG. Nenhum commit
 def documents(meta: dict, counts: dict) -> dict:
     s = SOURCES
     dgs = " ".join(meta["device_groups"])
+    dg_entries = "".join(f'<entry name="{escape(dg, {chr(34): "&quot;"})}"/>'
+                         for dg in meta["device_groups"])
     backup = meta["backup_name"]
     # A tabela sai de PHASE_FILES: todo arquivo de fase gravado (write_command_files pula só
     # as chaves 0 e 5 quando vazias) tem de aparecer no roteiro, na ordem de execução.
@@ -624,15 +627,26 @@ scp export configuration from pre-limpeza-shared.xml to <usuario>@<host>:<caminh
    alterações devem corresponder a `commands-index.csv`, sem nenhuma regra criada, removida
    ou reordenada.
 2. **Commit > Validate Changes** (valida o commit no Panorama sem aplicar) e resolver qualquer erro.
+   Equivalente na XML API (aceito por Panorama 11.1 em laboratório; resultado esperado
+   "Configuration is valid"):
+
+```
+type=op&cmd=<validate><full></full></validate>
+```
+
 3. **Validate Device Group Push** para os Device Groups {dgs}.
    Equivalente na XML API (somente validação, sem push), documentado em
-   [Commit-All]({s['xmlapi_commit_all']}):
+   [Commit-All]({s['xmlapi_commit_all']}); `validate-only` recebe `yes` (guia da CLI 11.1:
+   `commit-all shared-policy … validate-only <yes|no>`). A forma vazia
+   `<validate-only></validate-only>` é recusada pelo Panorama 11.1 ("validate-only is invalid").
 
 ```
-type=commit&action=all&cmd=<commit-all><shared-policy><validate-only></validate-only></shared-policy></commit-all>
+type=commit&action=all&cmd=<commit-all><shared-policy><validate-only>yes</validate-only><device-group>{dg_entries}</device-group></shared-policy></commit-all>
 ```
 
-   O resultado da validação é acompanhado por `type=op&cmd=<show><jobs><id>JOB</id></jobs></show>`
+   Os firewalls precisam estar conectados: sem conexão, o resultado de cada firewall é
+   `not connected` e a validação não conclui nada.
+   O resultado de cada validação é acompanhado por `type=op&cmd=<show><jobs><id>JOB</id></jobs></show>`
    ([Commit]({s['xmlapi_commit']})).
 4. Validação de sintaxe da CLI (obrigatória antes de usar qualquer `.cli`): o guia não traz a
    hierarquia de Panorama {meta['cli_version']} (`cli-syntax-check.csv`). Carregue o XML final em um

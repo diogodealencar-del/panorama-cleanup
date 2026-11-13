@@ -90,7 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
             mode_parser.add_argument(
                 "--exported", action="store_true",
                 help="o XML foi exportado do Panorama após a implantação: não exige o sha256 do "
-                     "XML gerado e ignora /config/readonly (IDs mantidos pelo Panorama)")
+                     "XML gerado e ignora /config/readonly (IDs mantidos pelo Panorama) e, se ausente no "
+                     "original, /config/predefined (conteúdo embutido lido por action=get)")
             for flag, text in (("--plan", "run PLAN aprovado"),
                                ("--convert-run", "run APPLY de conversão (Etapa 5)"),
                                ("--cleanup-run", "run APPLY cleanup (Etapa 6)")):
@@ -833,7 +834,9 @@ def run_validate(input_path, modified_path, plan_dir, convert_dir, cleanup_dir, 
     import csv
     import json
 
-    from panorama_cleanup.final_validation import APPROVED, Authorized, validate_final
+    from panorama_cleanup.final_validation import (
+        APPROVED, Authorized, strip_exported_predefined, validate_final,
+    )
     from panorama_cleanup.report_generator import write_validation_reports
 
     ctx = create_run_context("validate", input_path)
@@ -871,11 +874,15 @@ def run_validate(input_path, modified_path, plan_dir, convert_dir, cleanup_dir, 
                           descriptions)
 
         final = parse_backup(modified_path)
+        predefined_removed = exported and strip_exported_predefined(lp.tree, final)
         # Base: original + cópias locais da fase 0 (transparentes); as verificações de
         # estrutura e origem dos objetos seguem o plano. A verificação independente de
         # IP, porta e application é feita contra o ORIGINAL verdadeiro.
         v = validate_final(lp.tree, final, auth,
                            ignore_sections=("/config/readonly",) if exported else ())
+        if predefined_removed:
+            v.add("estrutura", "/config/predefined do XML exportado ignorada (conteúdo embutido do "
+                  "Panorama, ausente no original)", True, "leitura por type=config&action=get")
         eq = _rule_equivalence_check(original, final)
         v.add("independente", eq.name, eq.passed, eq.detail)
         verify_unchanged(ctx.input_path, ctx.input_sha256)

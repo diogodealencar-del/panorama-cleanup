@@ -58,6 +58,24 @@ class Validation:
         self.checks.append((area, name, bool(ok), detail))
 
 
+def strip_exported_predefined(original, final) -> bool:
+    """Remove /config/predefined do XML exportado quando o original não a tem.
+
+    A leitura do candidate por XML API (type=config&action=get&xpath=/config) devolve também
+    o conteúdo embutido do Panorama (applications, threats predefinidas), que o export de
+    configuração não inclui. Não é configuração do usuário. Se o original também tiver a
+    seção, nada é removido e a comparação normal decide. Retorna True se removeu.
+    """
+    ro, rf = original.getroot(), final.getroot()
+    if ro.find("predefined") is not None:
+        return False
+    removed = False
+    for el in rf.findall("predefined"):
+        rf.remove(el)
+        removed = True
+    return removed
+
+
 def validate_final(original, final, auth: Authorized, ignore_sections=()) -> Validation:
     """ignore_sections: seções fora da comparação (ex.: /config/readonly em XML exportado do
     Panorama, cujos IDs internos o próprio Panorama mantém; D23)."""

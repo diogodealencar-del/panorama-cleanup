@@ -147,3 +147,20 @@ def test_exported_mode_ignores_readonly_only(pipeline):
     assert v.result == APPROVED, failed(v)
     t2 = tamper(t, lambda x: one(x, "//template/entry[@name='T-RJ']/config").append(etree.Element("x")))
     assert validate_final(original, t2, auth, ignore_sections=("/config/readonly",)).result == NOT_APPROVED
+
+
+def test_strip_exported_predefined_only_when_absent_in_original():
+    """Leitura por action=get traz /config/predefined; só é ignorada se o original não a tem."""
+    from panorama_cleanup.final_validation import strip_exported_predefined
+
+    original = etree.ElementTree(etree.fromstring("<config><shared/></config>"))
+    exported = etree.ElementTree(etree.fromstring(
+        "<config><shared/><predefined><application/></predefined></config>"))
+    assert strip_exported_predefined(original, exported) is True
+    assert [c.tag for c in exported.getroot()] == ["shared"]
+    assert strip_exported_predefined(original, exported) is False
+
+    with_pre = etree.ElementTree(etree.fromstring("<config><shared/><predefined/></config>"))
+    other = etree.ElementTree(etree.fromstring("<config><shared/><predefined><x/></predefined></config>"))
+    assert strip_exported_predefined(with_pre, other) is False
+    assert other.getroot().find("predefined") is not None
