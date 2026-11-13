@@ -497,9 +497,21 @@ echo "Concluído: $DONE de $TOTAL operações de $FILE. Log: $LOG. Nenhum commit
 def documents(meta: dict, counts: dict) -> dict:
     s = SOURCES
     dgs = " ".join(meta["device_groups"])
-    tag_row = (f"| 6 | `41-fase4-excluir-tags-nao-utilizadas.tsv` / `.cli` | {counts[5]} | "
-               "**pendente de decisão** |\n") if counts[5] else ""
     backup = meta["backup_name"]
+    # A tabela sai de PHASE_FILES: todo arquivo de fase gravado (write_command_files pula só
+    # as chaves 0 e 5 quando vazias) tem de aparecer no roteiro, na ordem de execução.
+    interfaces = {0: "XML API (recomendado) ou CLI", 1: "XML API (recomendado) ou CLI",
+                  2: "XML API (recomendado) ou CLI", 3: "XML API ou CLI", 4: "XML API ou CLI",
+                  5: "**pendente de decisão**"}
+    steps = [("`01-precheck.md`", "conferência do estado do Panorama", "CLI + ferramenta local"),
+             ("`02-backup.cli`", "backup", "PAN-OS CLI")]
+    for key, stem, _ in PHASE_FILES:
+        if key in (0, 5) and not counts.get(key):
+            continue
+        steps.append((f"`{stem}.tsv` / `.cli`", str(counts.get(key, 0)), interfaces[key]))
+    steps += [("`50-validacao.md`", "validação sem commit", "interface web + XML API"),
+              ("`60-commit-e-push.md`", "commit e push controlados", "**somente após aprovação**")]
+    step_rows = "".join(f"| {i} | {f} | {n} | {itf} |\n" for i, (f, n, itf) in enumerate(steps))
     readme = f"""# Execução da limpeza no Panorama
 
 Gerado pelo run `{meta['run_id']}`. Versão identificada no backup: **PAN-OS {meta['panos']}**
@@ -518,15 +530,7 @@ documentados em `60-commit-e-push.md` e exigem aprovação.
 
 | Passo | Arquivo | Operações | Interface |
 |---|---|---|---|
-| 0 | `01-precheck.md` | conferência do estado do Panorama | CLI + ferramenta local |
-| 1 | `02-backup.cli` | backup | PAN-OS CLI |
-| 2 | `10-fase1-criar-shared.tsv` / `.cli` | {counts[1]} | XML API (recomendado) ou CLI |
-| 3 | `20-fase2-atualizar-referencias.tsv` / `.cli` | {counts[2]} | XML API (recomendado) ou CLI |
-| 4 | `30-fase3-excluir-copias-locais.tsv` / `.cli` | {counts[3]} | XML API ou CLI |
-| 5 | `40-fase4-excluir-nao-utilizados.tsv` / `.cli` | {counts[4]} | XML API ou CLI |
-{tag_row}| 7 | `50-validacao.md` | validação sem commit | interface web + XML API |
-| 8 | `60-commit-e-push.md` | commit e push controlados | **somente após aprovação** |
-| — | `80-testes-de-politica.cli` | testes antes/depois em cada firewall | CLI do firewall (operacional) |
+{step_rows}| — | `80-testes-de-politica.cli` | testes antes/depois em cada firewall | CLI do firewall (operacional) |
 
 O procedimento completo de homologação, implantação e rollback parte do modelo
 `docs/modelo-etapa-09.md` da ferramenta, preenchido com os dados desta execução.

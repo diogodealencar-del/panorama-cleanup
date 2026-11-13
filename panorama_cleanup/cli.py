@@ -788,6 +788,11 @@ def run_commands(input_path, plan_dir, convert_dir, cleanup_dir, settings) -> in
                      and any(len(line.split("\t")) != 5
                              for line in path.read_text(encoding="utf-8").splitlines())]
         add("arquivos .tsv com 5 colunas em todas as linhas", not malformed, f"{malformed}")
+        readme_text = files["00-LEIA-ME.md"].read_text(encoding="utf-8")
+        not_in_order = [name for name in files if name.endswith(".tsv")
+                        and f"`{name}`" not in readme_text]
+        add("todo arquivo de fase gerado consta da ordem de execução do 00-LEIA-ME.md",
+            not not_in_order, f"{not_in_order}")
         commit_lines = [name for name, path in files.items() if name.endswith((".cli", ".tsv"))
                         for line in path.read_text(encoding="utf-8").splitlines()
                         if not line.startswith("#") and "commit" in line.split("\t")[2:3] + line.split()[:1]]
