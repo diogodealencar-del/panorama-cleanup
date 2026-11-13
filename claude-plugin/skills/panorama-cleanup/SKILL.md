@@ -5,7 +5,7 @@ description: Ferramenta determinística incluída (execute-a; nunca analise o XM
 
 <!-- Gerado por scripts/build_skill.py a partir de skill/. Não edite este arquivo: edite skill/ e rode o build. -->
 
-# Saneamento de objetos do Panorama (panorama-cleanup 0.3.0)
+# Saneamento de objetos do Panorama (panorama-cleanup 0.3.1)
 
 Conduz a ferramenta `panorama-cleanup` sobre um backup XML do Panorama, etapa por etapa, com aprovação explícita entre etapas. Prioridade absoluta: o comportamento das políticas de cada firewall não pode mudar. O valor efetivo de cada objeto, resolvido pela herança Shared > DG ancestral > DG, deve ser idêntico antes e depois.
 
@@ -15,7 +15,7 @@ Conduz a ferramenta `panorama-cleanup` sobre um backup XML do Panorama, etapa po
 2. **Nunca tocar no original.** O backup recebido não é editado. A ferramenta trabalha em cópias e se recusa a gravar em `input/`.
 3. **Nunca acessar o Panorama nem fazer commit ou push.** A ferramenta não se conecta a nada. O executor `run-xmlapi.sh` só envia com `CONFIRM_EXECUTE=yes`, e quem roda é o usuário, nunca você.
 4. **Uma etapa por vez.** Ao fim de cada etapa: apresente resultados, limitações e o que revisar, e **pare**. Não inicie a etapa seguinte sem aprovação explícita. Nenhum modo encadeia o próximo.
-5. **UNKNOWN nunca é removido.** Objeto só é excluído com ausência de uso comprovada. Mesmo nome com valor diferente vira `NOME_DG` em Shared, nunca um objeto só.
+5. **UNKNOWN nunca é removido.** Objeto só é excluído com ausência de uso comprovada. Mesmo nome com valor diferente recebe nome novo em Shared (pelo valor, ou `NOME_DG` para grupos), nunca um objeto só.
 6. **Não inventar sintaxe.** Comandos só da versão identificada no backup, conferidos contra o guia oficial dessa versão. Se faltar evidência, interrompa a operação e documente a limitação.
 7. **Qualquer inconsistência = NÃO APROVADO.** Não contorne verificações nem relativize falhas de integridade. Ao revisar uma etapa, procure em **todos** os CSVs do run, não só no `integrity-checks.csv`, por `FALHA`, `ERRO`, `NÃO APLICADO` ou `NÃO`. Qualquer ocorrência bloqueia a etapa até ser explicada pela ferramenta.
 8. **Diferencie** ação solicitada, executada e validada. Declare o que não foi verificado.
@@ -75,12 +75,12 @@ SESSAO
 |---|---|---|
 | 2 Inventário | `PC inventory --input "$B"` | Versão do PAN-OS; hierarquia de DGs (pai `UNKNOWN` = alerta); reconciliação toda `yes`; contêineres não reconhecidos |
 | 3 Análise | `PC analyze --input "$B" --inventory "$(ultimo inventory)"` | `unresolved-references.csv` (todo "verificar" exige análise manual); UNKNOWN e motivos; `context-dependent-objects.csv` |
-| 4 Plano | `PC plan --input "$B" --analysis "$(ultimo analyze)"` | `plan-verification.csv` com **0 diferenças**; nomes `NOME_DG`; descrições perdidas (`notes` em `deleted-objects.csv`); `kept-local-objects.csv`; exclusões da fase 4 |
+| 4 Plano | `PC plan --input "$B" --analysis "$(ultimo analyze)"` | `plan-verification.csv` com **0 diferenças**; nomes novos em `renamed-objects.csv` (pelo valor: `NOME-IP`, `NOME-REDE-MÁSCARA`, `NOME-FQDN`, `NOME-PROTOCOLO-PORTA`; grupos `NOME_DG`); descrições perdidas (`notes` em `deleted-objects.csv`); `kept-local-objects.csv`; exclusões da fase 4 |
 | 5 Conversão | `PC apply --input "$B" --plan "$(ultimo plan)"` | `integrity-checks.csv` todo OK (inclui "todas as atualizações de referência do plano aplicadas" e "grupos remanescentes"); leia `reference-updates.csv` inteiro: nenhuma linha "NÃO APLICADO"; `policy-comparison.csv` |
-| 6 Não utilizados | `PC apply --stage cleanup --keep-type tag --input "$B" --plan "$(ultimo plan)" --from-run "$(ultimo apply)"` | `integrity-checks.csv` todo OK; `unused-review.csv`; tags mantidas |
-| 7 Comandos | `PC plan --stage commands --input "$B" --plan "$(ultimo plan)" --convert-run "$(ultimo apply)" --cleanup-run "$(ultimo apply-cleanup)"` | `generation-checks.csv` todo OK; se "CLI validada para PAN-OS X.Y" estiver PENDENTE, implantar só pela XML API |
+| 6 Não utilizados | `PC apply --stage cleanup --keep-type tag --input "$B" --plan "$(ultimo plan)" --from-run "$(ultimo apply)"` | `integrity-checks.csv` todo OK; `unused-review.csv`; tags mantidas. Outro tipo mantido (ex.: `--keep-type schedule`, `--keep-type log-settings/profiles`) só por decisão do usuário, registrada; confira no `deleted-objects.csv` que nenhum objeto desses tipos aparece |
+| 7 Comandos | `PC plan --stage commands --input "$B" --plan "$(ultimo plan)" --convert-run "$(ultimo apply)" --cleanup-run "$(ultimo apply-cleanup)"` | `generation-checks.csv` todo OK (inclui "todo arquivo de fase gerado consta da ordem de execução do 00-LEIA-ME.md"); se "CLI validada para PAN-OS X.Y" estiver PENDENTE, implantar só pela XML API |
 | 8 Validação | `PC validate --input "$B" --modified "$(ls "$W"/output/xml/$(basename "$(ultimo apply-cleanup)")/*.final.xml)" --plan "$(ultimo plan)" --convert-run "$(ultimo apply)" --cleanup-run "$(ultimo apply-cleanup)"` | `validation-report.html` = **APROVADO** (exit 0). NÃO APROVADO: pare |
-| 9 Homologação | Laboratório com `run-xmlapi.sh` (um `.tsv` por vez, na ordem 10→20→30→40); depois `PC validate --exported --input "$B" --modified <candidate-exportado>.xml --plan … --convert-run … --cleanup-run …`; ensaio de rollback | Preencher o modelo `docs/modelo-etapa-09.md` do clone (copie para `$W/`) com os runs, sha256, DGs e seriais |
+| 9 Homologação | Laboratório (passos A0 a A9 do modelo): carga **parcial** do backup, plano recalculado sobre a running do laboratório (lista `operations` idêntica à aprovada), `run-xmlapi.sh` um `.tsv` por vez na ordem 05 (se existir) →10→20→30→40, Validate Changes, `PC validate --exported --input <running do lab> --modified <candidate exportado>.xml --plan … --convert-run … --cleanup-run …` (runs do laboratório); ensaio de rollback | Preencher o modelo `docs/modelo-etapa-09.md` do clone (copie para `$W/`) com os runs, sha256, DGs e seriais. Comportamentos já observados em Panorama real: `docs/homologacao-panorama-11.1.md` do clone |
 | 10 Documentação | Arquivar runs, logs, testes antes/depois e decisões | — |
 
 O XML final fica em `$W/output/xml/<run apply-cleanup>/*.final.xml`. Os comandos ficam em `$W/cli/<run plan-commands>/`, começando pelo `00-LEIA-ME.md`.
@@ -100,4 +100,8 @@ O XML final fica em `$W/output/xml/<run apply-cleanup>/*.final.xml`. Os comandos
 - **Precedência:** se a análise parar por "Objects defined in ancestors will take higher precedence", não contorne. Explique ao usuário e pare.
 - **Fora do backup:** configuração local dos firewalls, scripts e integrações não aparecem no backup. Exclusões precisam ser confirmadas com o usuário.
 - **Não importe o XML final inteiro** no Panorama: a seção `readonly` não é ajustada. Implante pela XML API.
+- **Backup de produção em laboratório:** nunca carregue o arquivo inteiro (traz IP de gerência, HA e administradores da produção; o commit faria o laboratório perder o acesso). Só `shared`, `template`, `template-stack` e `device-group`, por `load config partial` (modelo, passo A1).
+- **Execução dos `.tsv`:** ao encadear arquivos num laço, teste o código de saída do próprio `run-xmlapi.sh`; `./run-xmlapi.sh f | grep …` esconde a falha e o laço seguiria para a fase seguinte.
+- **Validação no Panorama:** Validate Changes = `type=op&cmd=<validate><full></full></validate>`; Validate Device Group Push = `commit-all` com `<validate-only>yes</validate-only>` (vazio é recusado). Sem firewall conectado, o push não é validado (`not connected`).
+- **Instruções ao usuário em zsh:** não ponha comentários `#` na linha dos comandos (com parênteses, o zsh acusa "number expected").
 - Antes de afirmar algo sobre o comportamento do Panorama, consulte docs.paloaltonetworks.com da versão do backup.
