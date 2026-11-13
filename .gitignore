@@ -36,3 +36,4 @@ docs/procedimento-uso-da-ferramenta.pdf
 
 # Skill gerada (scripts/build_skill.py)
 dist/
+.build/

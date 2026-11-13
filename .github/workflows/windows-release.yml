@@ -1,0 +1,61 @@
+name: Executaveis Windows
+
+on:
+  push:
+    branches:
+      - 'build/windows-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Preparar Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Instalar dependencias
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -e '.[dev]' 'pyinstaller>=6.16,<7'
+      - name: Testar e compilar
+        shell: pwsh
+        run: .\.venv\Scripts\python.exe scripts\build_windows.py
+      - name: Guardar arquivos e resultados dos testes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64-${{ github.sha }}
+          retention-days: 30
+          include-hidden-files: true
+          path: |
+            dist/windows/PanoramaCleanup.exe
+            dist/windows/panorama-cleanup.exe
+            dist/windows/*.zip
+            dist/windows/SHA256SUMS.txt
+            dist/windows/build-info.json
+            .build/source-tests.xml
+      - name: Publicar release Windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: .\.venv\Scripts\python.exe scripts\publish_windows.py

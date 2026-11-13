@@ -10,6 +10,8 @@ Etapas 1 a 8 implementadas e validadas em Panorama PAN-OS 11.1 (incluindo commit
 
 ## Instalação
 
+Executáveis portáteis para Windows e instruções de compilação estão descritos em [Executável Windows](docs/windows-executable.md).
+
 Windows e Linux: ver [`docs/procedimento-windows-linux.md`](docs/procedimento-windows-linux.md) (instalação, PowerShell, Git Bash e validação no primeiro uso). Os comandos abaixo valem para macOS e Linux.
 
 Executável Offiline sem IA
