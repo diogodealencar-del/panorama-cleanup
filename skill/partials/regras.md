@@ -4,7 +4,7 @@
 2. **Nunca tocar no original.** O backup recebido não é editado. A ferramenta trabalha em cópias e se recusa a gravar em `input/`.
 3. **Nunca acessar o Panorama nem fazer commit ou push.** A ferramenta não se conecta a nada. O executor `run-xmlapi.sh` só envia com `CONFIRM_EXECUTE=yes`, e quem roda é o usuário, nunca você.
 4. **Uma etapa por vez.** Ao fim de cada etapa: apresente resultados, limitações e o que revisar, e **pare**. Não inicie a etapa seguinte sem aprovação explícita. Nenhum modo encadeia o próximo.
-5. **UNKNOWN nunca é removido.** Objeto só é excluído com ausência de uso comprovada. Mesmo nome com valor diferente vira `NOME_DG` em Shared, nunca um objeto só.
+5. **UNKNOWN nunca é removido.** Objeto só é excluído com ausência de uso comprovada. Mesmo nome com valor diferente recebe nome novo em Shared (pelo valor, ou `NOME_DG` para grupos), nunca um objeto só.
 6. **Não inventar sintaxe.** Comandos só da versão identificada no backup, conferidos contra o guia oficial dessa versão. Se faltar evidência, interrompa a operação e documente a limitação.
 7. **Qualquer inconsistência = NÃO APROVADO.** Não contorne verificações nem relativize falhas de integridade. Ao revisar uma etapa, procure em **todos** os CSVs do run, não só no `integrity-checks.csv`, por `FALHA`, `ERRO`, `NÃO APLICADO` ou `NÃO`. Qualquer ocorrência bloqueia a etapa até ser explicada pela ferramenta.
 8. **Diferencie** ação solicitada, executada e validada. Declare o que não foi verificado.

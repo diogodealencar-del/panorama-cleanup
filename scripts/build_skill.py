@@ -51,9 +51,11 @@ FROM_ENVIRONMENT = ("lxml", "openpyxl")
 
 VARIANTS = {
     "plugin": {"CMD": "panorama-cleanup", "SESSION_VARS": "`W` e `B`",
-               "MODELO_ETAPA9": "`docs/modelo-etapa-09.md` do clone (copie para `$W/`)"},
+               "MODELO_ETAPA9": "`docs/modelo-etapa-09.md` do clone (copie para `$W/`)",
+               "HOMOLOGACAO": "`docs/homologacao-panorama-11.1.md` do clone"},
     "chat": {"CMD": 'python3 "$SKILL_DIR/scripts/run.py"', "SESSION_VARS": "`W`, `B` e `SKILL_DIR`",
-             "MODELO_ETAPA9": "`$SKILL_DIR/docs/modelo-etapa-09.md` (copie para `$W/`)"},
+             "MODELO_ETAPA9": "`$SKILL_DIR/docs/modelo-etapa-09.md` (copie para `$W/`)",
+             "HOMOLOGACAO": "`$SKILL_DIR/docs/homologacao-panorama-11.1.md`"},
 }
 
 
@@ -122,7 +124,9 @@ def collect(ver: str, with_guides: bool = True):
     files = [("SKILL.md", render("chat", ver).encode("utf-8")),
              ("scripts/run.py", (SKILL_SRC / "run.py").read_bytes()),
              ("scripts/config/settings.json", (ROOT / "config" / "settings.json").read_bytes()),
-             ("docs/modelo-etapa-09.md", (ROOT / "docs" / "modelo-etapa-09.md").read_bytes())]
+             ("docs/modelo-etapa-09.md", (ROOT / "docs" / "modelo-etapa-09.md").read_bytes()),
+             ("docs/homologacao-panorama-11.1.md",
+              (ROOT / "docs" / "homologacao-panorama-11.1.md").read_bytes())]
     for py in sorted((ROOT / "panorama_cleanup").glob("*.py")):
         files.append((f"scripts/panorama_cleanup/{py.name}", py.read_bytes()))
     guides = sorted((ROOT / "docs" / "referencias").glob("pan-os-*/ngfw-cli.md")) if with_guides else []
@@ -137,6 +141,7 @@ def collect(ver: str, with_guides: bool = True):
 
 ALLOWED = re.compile(
     r"^(SKILL\.md|scripts/run\.py|scripts/config/settings\.json|docs/modelo-etapa-09\.md"
+    r"|docs/homologacao-panorama-11\.1\.md"
     r"|scripts/panorama_cleanup/[a-z_]+\.py"
     r"|scripts/docs/referencias/(README\.md|pan-os-\d+\.\d+/ngfw-cli\.md)"
     r"|scripts/_vendor/defusedxml/[\w/.-]+\.(py|typed)"
