@@ -541,7 +541,14 @@ O procedimento completo de homologação, implantação e rollback parte do mode
 Cada arquivo deve ser executado inteiro e na ordem; o `run-xmlapi.sh` para no primeiro erro.
 Pela CLI, ative `set cli scripting-mode on` antes de colar e lembre que `delete` pela CLI não
 verifica dependências: a ordem das fases é o que garante que nenhuma referência fica quebrada.
-Se algo falhar, não continue: descarte o candidate config com Revert Changes (interface web) e reavalie.
+Se algo falhar, não continue: descarte o candidate config e reavalie. O Revert All Changes (interface web)
+descarta também alterações pendentes de outros administradores; para desfazer só as alterações do
+administrador que executou os comandos, o guia da XML API 11.1 documenta o revert parcial por
+administrador e Device Group (PAN-OS and Panorama API Usage Guide 11.1, operational commands):
+`type=op&cmd=<revert><config><partial><admin><member>ADMIN</member></admin><device-group><member>DG</member></device-group>`
+`<no-template/><no-template-stack/><no-log-collector-group/><no-log-collector/><device-and-network>excluded</device-and-network>`
+`</partial></config></revert>`. As alterações em Shared não pertencem a um Device Group: confirme no candidate,
+antes de depender desse comando, que o revert parcial também as desfaz.
 O detalhe de cada comando (sintaxe, contexto, finalidade, resultado esperado, validação e risco)
 está em `commands-index.csv`.
 

@@ -250,6 +250,21 @@ python -m panorama_cleanup validate --input "$B" --modified "$FINAL" \
 
 Qualquer inconsistência resulta em **NÃO APROVADO**. Não prossiga nesse caso.
 
+### Comparação detalhada de dois XMLs (modo `compare`)
+
+Relatório de diferenças entre o XML original e qualquer XML modificado (o `.final.xml` gerado ou o exportado do Panorama depois da implantação). Não usa plano nem run anterior, é somente leitura e confere o sha256 dos dois arquivos antes e depois.
+
+```sh
+python -m panorama_cleanup compare --input "$B" --modified "$FINAL"            # XML gerado
+python -m panorama_cleanup compare --input "$B" --modified exportado.xml --exported   # exportado do Panorama
+```
+
+- **Saída:** `output/reports/<run>/compare-report.html` (filtros por tabela), `compare-report.xlsx`, um `compare-*.csv` por tabela e `manifest.json`.
+- **Conteúdo:** arquivos e seções fora de objetos e políticas; regras por rulebase (pareadas por UUID e depois por nome: adicionadas, removidas, renomeadas, reordenadas); cada campo de regra alterado com antes e depois e a prova do valor efetivo por firewall; objetos por tipo e escopo, com inventário das alterações e equivalente visível; classificação de duplicados e conflitos antes e depois; diferença de valor efetivo dos grupos por contexto, com e sem uso por regra; referências novas sem resolução.
+- **Risco de campo de regra:** BAIXO só se o valor efetivo for igual em todos os contextos; campo que não referencia objeto, tag de regra, nome ou UUID alterados são ALTO.
+- **Parecer:** nunca APROVADO. O máximo é "sem diferenças efetivas nas regras modeladas (inconclusivo para importação)", e o relatório lista o que não foi validado. A aprovação continua sendo do `validate`, que usa o plano.
+- **Grupos:** a tabela de grupos não filtra por uso por regra (diferente do `validate`, que só reprova o que alguma regra alcança). Contextos em que o nome é sombreado no original não são comparados.
+
 ### Etapa 9 — Homologação, implantação e rollback
 
 Copie `docs/modelo-etapa-09.md` para a pasta de trabalho e preencha:

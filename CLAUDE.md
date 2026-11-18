@@ -315,6 +315,11 @@ Valida estrutura, políticas, referências e objetos.
 
 Nenhum modo poderá executar automaticamente o modo seguinte.
 
+### COMPARE
+
+Somente leitura, fora da sequência acima e sem plano. Gera o relatório detalhado de diferenças
+entre dois XMLs (original e modificado/exportado). Nunca emite APROVADO; a aprovação é do VALIDATE.
+
 ## 11. GERAÇÃO DOS COMANDOS CLI
 
 Gerar comandos completos e específicos para a versão identificada do Panorama.
