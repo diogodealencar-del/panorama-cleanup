@@ -40,10 +40,11 @@ MODE_HELP = {
     "plan": "Somente leitura. Plano de alterações e comandos propostos.",
     "apply": "Aplica o plano em uma cópia do XML. Nunca altera o original.",
     "validate": "Compara original e modificado.",
+    "compare": "Somente leitura. Relatório detalhado de diferenças entre dois XMLs, sem plano.",
 }
 
 # Etapa do protocolo (CLAUDE.md §17) em que cada modo passa a existir.
-MODE_STAGE = {"inventory": 2, "analyze": 3, "plan": 4, "apply": 5, "validate": 8}
+MODE_STAGE = {"inventory": 2, "analyze": 3, "plan": 4, "apply": 5, "validate": 8, "compare": 8}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,6 +85,13 @@ def build_parser() -> argparse.ArgumentParser:
                 "--keep-type", action="append", default=[], metavar="TIPO",
                 help="cleanup: tipo de objeto que não deve ser removido (repetível; ex.: tag)",
             )
+        if mode == "compare":
+            mode_parser.add_argument("--modified", type=Path, required=True,
+                                     help="XML modificado (gerado pela ferramenta ou exportado)")
+            mode_parser.add_argument(
+                "--exported", action="store_true",
+                help="o XML modificado foi exportado do Panorama: ignora /config/readonly e, se "
+                     "ausente no original, /config/predefined")
         if mode == "validate":
             mode_parser.add_argument("--modified", type=Path, required=True,
                                      help="XML final a validar")
@@ -173,6 +181,8 @@ def _dispatch(args, settings) -> int:
         return run_inventory(args.input, settings)
     if args.mode == "analyze":
         return run_analyze(args.input, args.inventory, settings)
+    if args.mode == "compare":
+        return run_compare(args.input, args.modified, settings, args.exported)
     if args.mode == "validate":
         return run_validate(args.input, args.modified, args.plan, args.convert_run,
                             args.cleanup_run, settings, args.exported)
@@ -910,5 +920,51 @@ def run_validate(input_path, modified_path, plan_dir, convert_dir, cleanup_dir, 
     return EXIT_OK if v.result == APPROVED else EXIT_ERROR
 
 
+def run_compare(input_path, modified_path, settings, exported: bool = False) -> int:
+    """COMPARE: relatório detalhado original x modificado, sem plano e somente leitura."""
+    from panorama_cleanup.compare_report import write_compare_reports
+    from panorama_cleanup.xml_compare import compare_trees
+
+    ctx = create_run_context("compare", input_path)
+    log_file = configure_logging(settings, ctx.run_id)
+    log = logging.getLogger(LOGGER_NAME)
+    log.info("Run %s: original %s sha256=%s", ctx.run_id, ctx.input_path, ctx.input_sha256)
+    try:
+        modified_sha = _existing_sha256(modified_path)
+        if Path(modified_path).resolve() == Path(ctx.input_path).resolve():
+            raise AnalysisError("o XML modificado é o próprio original")
+        log.info("Modificado %s sha256=%s", modified_path, modified_sha)
+        original, modified = parse_backup(ctx.input_path), parse_backup(modified_path)
+        cmp = compare_trees(original, modified, exported)
+        verify_unchanged(ctx.input_path, ctx.input_sha256)
+        verify_unchanged(modified_path, modified_sha)
+        meta = {"files": [
+            {"role": "Original", "path": str(ctx.input_path), "size_bytes": ctx.input_size,
+             "sha256": ctx.input_sha256, "well_formed": "sim"},
+            {"role": "Modificado", "path": str(modified_path),
+             "size_bytes": Path(modified_path).stat().st_size, "sha256": modified_sha,
+             "well_formed": "sim"}], "exported": exported}
+        for w in cmp.warnings:
+            log.warning(w)
+        reports = write_compare_reports(cmp, ctx, settings, meta)
+        verify_unchanged(ctx.input_path, ctx.input_sha256)
+        verify_unchanged(modified_path, modified_sha)
+    except PanoramaCleanupError as exc:
+        log.error("%s", exc)
+        write_manifest(ctx, settings, {"status": "error", "error": str(exc), "log": str(log_file)})
+        return EXIT_ERROR
+
+    write_manifest(ctx, settings, {
+        "status": "ok", "verdict": cmp.verdict, "attention": cmp.attention,
+        "modified": {"path": str(modified_path), "sha256": modified_sha}, "exported": exported,
+        "summary": cmp.summary, "input_unchanged": True, "log": str(log_file),
+        "outputs": report_hashes(reports)})
+    log.info("Parecer: %s", cmp.verdict)
+    for item in cmp.attention:
+        log.warning("Atenção: %s", item)
+    log.info("Relatórios em %s", reports[0].parent)
+    return EXIT_OK
+
+
 IMPLEMENTED = {"inventory": run_inventory, "analyze": run_analyze, "plan": run_plan,
-               "apply": run_apply, "validate": run_validate}
+               "apply": run_apply, "validate": run_validate, "compare": run_compare}

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from panorama_cleanup import __version__
 
-MODES = ("inventory", "analyze", "plan", "apply", "validate")
+MODES = ("inventory", "analyze", "plan", "apply", "validate", "compare")
 _CHUNK = 1024 * 1024
 
 
